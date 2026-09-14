@@ -61,7 +61,7 @@ class SimplyLinkedList():
     def removeIndex(self, index):
         if self.isEmpty():
             print("Empty")
-            return none
+            return None
         elif index == 0:
             remove_node = self.head
             self.removeFirst()
