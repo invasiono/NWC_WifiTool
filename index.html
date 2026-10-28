@@ -1,0 +1,1665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Netscope — Real-Time Network & WiFi Analyzer</title>
+  <meta name="description" content="Netscope is a real-time network and WiFi analyzer dashboard powered by Python psutil and OS WiFi scanning." />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+          },
+          boxShadow: {
+            card: '0 1px 2px rgba(24,24,27,.04), 0 1px 1px rgba(24,24,27,.02)',
+            lift: '0 10px 30px -12px rgba(24,24,27,.12)',
+            modal: '0 25px 50px -12px rgba(0,0,0,.25)',
+          },
+        },
+      },
+    };
+  </script>
+
+  <!-- Chart.js (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <style>
+    :root { --ring: rgba(99,102,241,.25); }
+    html { -webkit-font-smoothing: antialiased; }
+    body { background: radial-gradient(1200px 600px at 10% -10%, #eef2ff 0%, transparent 60%), radial-gradient(900px 500px at 110% 0%, #ecfdf5 0%, transparent 55%), #fafafa; }
+    .card { background: rgba(255,255,255,.88); backdrop-filter: blur(8px); border: 1px solid rgba(228,228,231,.85); border-radius: 1.25rem; box-shadow: 0 1px 2px rgba(24,24,27,.04); transition: box-shadow .25s ease, transform .25s ease, border-color .25s ease; }
+    .card-hover:hover { box-shadow: 0 12px 32px -14px rgba(24,24,27,.16); transform: translateY(-2px); border-color: #d4d4d8; }
+    .tabular { font-variant-numeric: tabular-nums; }
+    .live-dot { position: relative; }
+    .live-dot::after { content: ''; position: absolute; inset: -4px; border-radius: 9999px; background: currentColor; opacity: .35; animation: pulse 1.6s ease-out infinite; }
+    .paused .live-dot::after { animation: none; opacity: 0; }
+    @keyframes pulse { 0% { transform: scale(.6); opacity: .45; } 100% { transform: scale(1.8); opacity: 0; } }
+    @keyframes flash { 0% { background: #eef2ff; } 100% { background: transparent; } }
+    .row-flash { animation: flash 1.2s ease-out; }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    .fade-up { animation: fadeUp .5s ease both; }
+    .seg-btn[aria-pressed="true"] { background: #fff; color: #18181b; box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 0 0 1px rgba(228,228,231,1); }
+    .net-item { transition: background .2s ease, opacity .2s ease; }
+    .net-item:hover { background: #f4f4f5; }
+    .bar-fill { transition: width .6s cubic-bezier(.22,1,.36,1); }
+    .marker { transition: left .6s cubic-bezier(.22,1,.36,1); }
+    th[data-sort] { cursor: pointer; user-select: none; }
+    th[data-sort]:hover { color: #18181b; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-thumb { background: #e4e4e7; border-radius: 8px; }
+    :focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; }
+
+    /* Circular Speedtest Gauge */
+    .st-gauge-bg { stroke: #f4f4f5; }
+    .st-gauge-fill {
+      transition: stroke-dashoffset 0.25s ease-out, stroke 0.3s ease;
+      transform: rotate(-90deg);
+      transform-origin: 50% 50%;
+    }
+  </style>
+</head>
+
+<body class="font-sans text-zinc-800 min-h-screen">
+  <!-- ============ HEADER ============ -->
+  <header class="sticky top-0 z-30 border-b border-zinc-200/70 bg-white/75 backdrop-blur-md">
+    <div class="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-500 to-emerald-400 grid place-items-center shadow-sm">
+          <svg class="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg>
+        </div>
+        <div class="leading-tight">
+          <div class="flex items-center gap-2">
+            <h1 class="text-[15px] font-semibold tracking-tight text-zinc-900">Netscope</h1>
+            <span class="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700 ring-1 ring-indigo-100">Live OS Telemetry</span>
+          </div>
+          <p class="text-xs text-zinc-500">Real-Time Network & WiFi Analyzer</p>
+        </div>
+      </div>
+
+      <!-- Live Interface & SSID Badges -->
+      <div class="hidden md:flex items-center gap-2 text-xs text-zinc-500">
+        <span class="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 font-medium text-zinc-700">
+          <svg class="h-3.5 w-3.5 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="7" width="20" height="10" rx="2"/><path d="M6 11h.01M10 11h.01"/></svg>
+          <span id="hdr-adapter">Wi-Fi Adapter</span>
+        </span>
+        <span id="hdr-ssid" class="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 font-semibold text-zinc-800">
+          <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+          <span>Scanning...</span>
+        </span>
+      </div>
+
+      <!-- Speed Test Trigger & Controls -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        <button id="btn-open-speedtest" type="button" class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 active:scale-[.98] transition">
+          <svg class="h-3.5 w-3.5 text-amber-300" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          <span>Speed Test</span>
+        </button>
+
+        <div id="ws-status" class="inline-flex items-center gap-2 rounded-full bg-emerald-50 text-emerald-700 px-3 py-1.5 text-xs font-medium ring-1 ring-emerald-100" title="WebSocket telemetry connection">
+          <span class="live-dot h-2 w-2 rounded-full bg-emerald-500 text-emerald-500"></span>
+          <span id="ws-label">Live</span>
+        </div>
+        <time id="clock" class="hidden sm:block font-mono text-xs text-zinc-500 tabular"></time>
+        <button id="btn-pause" type="button" class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 active:scale-[.98] transition" aria-pressed="false">
+          <svg id="ico-pause" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+          <svg id="ico-play" class="h-3.5 w-3.5 hidden" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l11-6.5a1 1 0 0 0 0-1.72l-11-6.5A1 1 0 0 0 8 5.5z"/></svg>
+          <span id="btn-pause-label">Pause</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <nav aria-label="Views" class="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 pt-4">
+    <div class="inline-flex gap-1 rounded-xl bg-zinc-100 p-1" role="tablist">
+      <button type="button" id="tab-dashboard" data-tab="dashboard" role="tab" class="tab-btn" aria-selected="true">Dashboard</button>
+      <button type="button" id="tab-heatmap" data-tab="heatmap" role="tab" class="tab-btn" aria-selected="false">Heatmap Planner</button>
+    </div>
+  </nav>
+
+  <main id="view-dashboard" class="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+
+    <!-- ============ METRICS CARDS (5) ============ -->
+    <section aria-labelledby="metrics-title">
+      <h2 id="metrics-title" class="sr-only">Key metrics</h2>
+      <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-4">
+        
+        <!-- Ping (ms) -->
+        <article class="card card-hover p-5 fade-up" id="card-ping">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-medium uppercase tracking-wider text-zinc-500">Ping (ICMP)</span>
+            <span data-badge class="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">Live</span>
+          </div>
+          <div class="mt-3 flex items-baseline gap-1">
+            <span data-value class="text-3xl font-semibold tracking-tight text-zinc-900 tabular">--</span>
+            <span class="text-sm text-zinc-400">ms</span>
+          </div>
+          <svg data-spark class="mt-3 h-8 w-full" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true"></svg>
+          <p class="mt-1 text-[11px] text-zinc-400">to 1.1.1.1 · avg <span data-sub class="tabular text-zinc-500">--</span> ms</p>
+        </article>
+
+        <!-- Bandwidth Live (Mbps) -->
+        <article class="card card-hover p-5 fade-up" style="animation-delay:.05s" id="card-bw">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-medium uppercase tracking-wider text-zinc-500">Real I/O Rate</span>
+            <span class="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 ring-1 ring-indigo-100">psutil</span>
+          </div>
+          <div class="mt-3 flex items-baseline gap-2">
+            <div>
+              <span id="stat-down" class="text-2xl font-semibold tracking-tight text-zinc-900 tabular">0.0</span>
+              <span class="text-xs text-indigo-600 font-medium">↓ Mbps</span>
+            </div>
+            <div class="text-zinc-300">/</div>
+            <div>
+              <span id="stat-up" class="text-2xl font-semibold tracking-tight text-zinc-900 tabular">0.0</span>
+              <span class="text-xs text-emerald-600 font-medium">↑ Mbps</span>
+            </div>
+          </div>
+          <svg data-spark class="mt-3 h-8 w-full" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true"></svg>
+          <p class="mt-1 text-[11px] text-zinc-400">session: <span id="stat-total" class="tabular text-zinc-600">0 MB</span></p>
+        </article>
+
+        <!-- Local IP & Routing -->
+        <article class="card card-hover p-5 fade-up" style="animation-delay:.1s" id="card-ip">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-medium uppercase tracking-wider text-zinc-500">Local IP</span>
+            <button type="button" id="btn-copy-ip" class="rounded-md px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 transition" title="Copy IP address">Copy</button>
+          </div>
+          <div class="mt-3">
+            <span data-value class="font-mono text-xl sm:text-[22px] font-semibold tracking-tight text-zinc-900">--</span>
+          </div>
+          <dl class="mt-4 grid grid-cols-2 gap-y-1.5 text-[11px]">
+            <dt class="text-zinc-400">Mask</dt><dd data-subnet class="text-right font-mono text-zinc-600">--</dd>
+            <dt class="text-zinc-400">Gateway</dt><dd data-gw class="text-right font-mono text-zinc-600">--</dd>
+            <dt class="text-zinc-400">Public IP</dt><dd data-pub class="text-right font-mono text-zinc-600 truncate">--</dd>
+          </dl>
+        </article>
+
+        <!-- Active Interface & Hardware -->
+        <article class="card card-hover p-5 fade-up" style="animation-delay:.15s" id="card-nic">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-medium uppercase tracking-wider text-zinc-500">Active NIC</span>
+            <span id="nic-status" class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-100">UP</span>
+          </div>
+          <div class="mt-3">
+            <div id="nic-name" class="text-lg font-semibold text-zinc-900 truncate">Wi-Fi</div>
+            <div id="nic-mac" class="font-mono text-xs text-zinc-500 truncate">--:--:--:--:--:--</div>
+          </div>
+          <dl class="mt-4 grid grid-cols-2 gap-y-1.5 text-[11px]">
+            <dt class="text-zinc-400">Card</dt><dd id="nic-model" class="text-right text-zinc-600 truncate">Intel Wi-Fi</dd>
+            <dt class="text-zinc-400">Protocol</dt><dd id="nic-proto" class="text-right font-mono text-zinc-600">802.11</dd>
+          </dl>
+        </article>
+
+        <!-- Connected WiFi Link -->
+        <article class="card card-hover p-5 fade-up col-span-2 sm:col-span-1" style="animation-delay:.2s" id="card-wifi-quick">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-medium uppercase tracking-wider text-zinc-500">WiFi Link</span>
+            <span id="wifi-quick-state" class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-100">Connected</span>
+          </div>
+          <div class="mt-3 flex items-center gap-3">
+            <div class="h-10 w-10 rounded-xl bg-indigo-50 grid place-items-center text-indigo-600 shrink-0">
+              <svg id="wifi-bars-icon" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path data-arc="3" d="M1.42 9a16 16 0 0 1 21.16 0"/><path data-arc="2" d="M5 12.55a11 11 0 0 1 14.08 0"/><path data-arc="1" d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>
+            </div>
+            <div class="leading-tight min-w-0">
+              <div id="wifi-quick-ssid" class="text-lg font-semibold text-zinc-900 truncate">--</div>
+              <div id="wifi-quick-band" class="text-xs text-zinc-500">CH -- · -- GHz</div>
+            </div>
+          </div>
+          <dl class="mt-4 grid grid-cols-2 gap-y-1.5 text-[11px]">
+            <dt class="text-zinc-400">Signal</dt><dd id="wifi-quick-sig" class="text-right font-mono text-zinc-600 tabular">-- dBm</dd>
+            <dt class="text-zinc-400">Link Rate</dt><dd id="wifi-quick-rate" class="text-right font-mono text-zinc-600 tabular">-- Mbps</dd>
+          </dl>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ============ BANDWIDTH MONITOR + CURRENT LINK ============ -->
+    <section class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      
+      <!-- Bandwidth Monitor (Live WebSocket Chart) -->
+      <article class="card p-6 xl:col-span-2 fade-up" aria-labelledby="bw-title">
+        <header class="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <h2 id="bw-title" class="text-base font-semibold text-zinc-900">Real-Time Bandwidth Monitor</h2>
+              <span class="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full ring-1 ring-emerald-100">
+                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> Live System I/O
+              </span>
+            </div>
+            <p class="text-xs text-zinc-500 mt-0.5">Sampled continuously via Python <span class="font-mono">psutil.net_io_counters()</span></p>
+          </div>
+          
+          <div class="flex items-center gap-2">
+            <button id="btn-card-speedtest" type="button" class="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/70 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition">
+              <svg class="h-3.5 w-3.5 text-indigo-600" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+              <span>Benchmark Speed</span>
+            </button>
+            <div class="inline-flex rounded-lg bg-zinc-100 p-1 text-xs font-medium text-zinc-500" role="group" aria-label="Time window">
+              <button type="button" class="seg-btn rounded-md px-2.5 py-1 transition" data-window="30" aria-pressed="false">30s</button>
+              <button type="button" class="seg-btn rounded-md px-2.5 py-1 transition" data-window="60" aria-pressed="true">60s</button>
+              <button type="button" class="seg-btn rounded-md px-2.5 py-1 transition" data-window="120" aria-pressed="false">2m</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="mt-5 grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="rounded-xl border border-zinc-100 bg-indigo-50/40 p-3">
+            <div class="flex items-center gap-1.5 text-[11px] font-medium text-zinc-600"><span class="h-2 w-2 rounded-full bg-indigo-500"></span>Download Rate</div>
+            <div class="mt-1 flex items-baseline gap-1"><span id="bw-down" class="text-2xl font-semibold text-zinc-900 tabular">0.00</span><span class="text-xs text-zinc-400">Mbps</span></div>
+          </div>
+          <div class="rounded-xl border border-zinc-100 bg-emerald-50/40 p-3">
+            <div class="flex items-center gap-1.5 text-[11px] font-medium text-zinc-600"><span class="h-2 w-2 rounded-full bg-emerald-500"></span>Upload Rate</div>
+            <div class="mt-1 flex items-baseline gap-1"><span id="bw-up" class="text-2xl font-semibold text-zinc-900 tabular">0.00</span><span class="text-xs text-zinc-400">Mbps</span></div>
+          </div>
+          <div class="rounded-xl border border-zinc-100 p-3">
+            <div class="text-[11px] font-medium text-zinc-500">Peak ↓ / ↑</div>
+            <div class="mt-1 text-sm font-semibold text-zinc-800 tabular"><span id="bw-peak-down">0.0</span> <span class="text-zinc-300">/</span> <span id="bw-peak-up">0.0 Mbps</span></div>
+            <div class="text-[11px] text-zinc-400">avg: <span id="bw-avg" class="tabular">0.0 / 0.0</span> Mbps</div>
+          </div>
+          <div class="rounded-xl border border-zinc-100 p-3">
+            <div class="text-[11px] font-medium text-zinc-500">Transferred Session</div>
+            <div class="mt-1 text-sm font-semibold text-zinc-800 tabular">↓ <span id="bw-total-down">0 MB</span></div>
+            <div class="text-[11px] text-zinc-400 tabular">↑ <span id="bw-total-up">0 MB</span></div>
+          </div>
+        </div>
+
+        <div class="relative mt-5 h-[280px]">
+          <canvas id="chart-bandwidth" aria-label="Line chart of download and upload speed in Mbps over time" role="img"></canvas>
+        </div>
+      </article>
+
+      <!-- Current WiFi Link Details (from netsh wlan show interfaces) -->
+      <aside class="card p-6 fade-up flex flex-col justify-between" aria-labelledby="link-title">
+        <div>
+          <header class="flex items-start justify-between">
+            <div>
+              <h2 id="link-title" class="text-base font-semibold text-zinc-900">Current WiFi Link</h2>
+              <p id="link-bssid" class="text-xs text-zinc-500 font-mono mt-0.5">--:--:--:--:--:--</p>
+            </div>
+            <span id="link-badge" class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-100">Connected</span>
+          </header>
+
+          <div class="mt-6">
+            <div class="flex items-end justify-between">
+              <div class="flex items-baseline gap-1">
+                <span id="link-rssi" class="text-5xl font-semibold tracking-tight text-zinc-900 tabular">--</span>
+                <span class="text-base text-zinc-400">dBm</span>
+              </div>
+              <div class="text-right">
+                <div id="link-quality" class="text-sm font-semibold text-zinc-800 tabular">--%</div>
+                <div id="link-quality-label" class="text-[11px] text-zinc-500">Signal Quality</div>
+              </div>
+            </div>
+            
+            <!-- Signal bar -->
+            <div class="relative mt-4 h-2 rounded-full bg-gradient-to-r from-rose-300 via-amber-300 to-emerald-400">
+              <div id="link-marker" class="marker absolute -top-1 h-4 w-4 -ml-2 rounded-full border-[3px] border-white bg-zinc-900 shadow" style="left:50%"></div>
+            </div>
+            <div class="mt-1.5 flex justify-between text-[10px] text-zinc-400 font-mono">
+              <span>-100 dBm</span><span>-75 dBm</span><span>-50 dBm</span>
+            </div>
+          </div>
+
+          <dl id="link-details" class="mt-6 divide-y divide-zinc-100 text-sm">
+            <!-- Dynamically populated -->
+          </dl>
+        </div>
+
+        <div class="pt-4 border-t border-zinc-100 mt-4 text-[11px] text-zinc-400 flex items-center justify-between">
+          <span>Source: <code class="font-mono text-zinc-500">netsh wlan</code></span>
+          <span id="link-update-time">Auto-synced</span>
+        </div>
+      </aside>
+    </section>
+
+    <!-- ============ WIFI CHANNEL ANALYZER + NEARBY NETWORKS ============ -->
+    <section class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      
+      <!-- WiFi Channel Graph -->
+      <article class="card p-6 xl:col-span-2 fade-up" aria-labelledby="ch-title">
+        <header class="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <h2 id="ch-title" class="text-base font-semibold text-zinc-900">WiFi Channel Analyzer</h2>
+              <span class="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600">Spectral Overlap</span>
+            </div>
+            <p class="text-xs text-zinc-500 mt-0.5">Plotting nearby access point signal strength (-30 to -90 dBm) and channel width</p>
+          </div>
+          
+          <div class="flex items-center gap-3">
+            <button id="btn-rescan" type="button" class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 active:scale-[.98] transition">
+              <svg id="rescan-spinner" class="h-3.5 w-3.5 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+              <span>Scan Now</span>
+            </button>
+            <div class="inline-flex rounded-lg bg-zinc-100 p-1 text-xs font-medium text-zinc-500" role="group" aria-label="Frequency band">
+              <button type="button" class="seg-btn rounded-md px-3 py-1 transition" data-band="2.4" aria-pressed="true">2.4 GHz</button>
+              <button type="button" class="seg-btn rounded-md px-3 py-1 transition" data-band="5" aria-pressed="false">5 GHz</button>
+            </div>
+          </div>
+        </header>
+
+        <!-- Insights Pill Bar -->
+        <div class="mt-4 flex flex-wrap gap-2 text-[11px]">
+          <span class="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-zinc-600">
+            Networks in Band: <b id="ch-count" class="font-semibold text-zinc-900 tabular">0</b>
+          </span>
+          <span class="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-zinc-600">
+            Overlapping Your Channel: <b id="ch-overlap" class="font-semibold text-zinc-900 tabular">0</b>
+          </span>
+          <span class="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-indigo-700 ring-1 ring-indigo-100">
+            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            Recommended Channel: <b id="ch-best" class="font-semibold tabular">--</b>
+          </span>
+        </div>
+
+        <div class="relative mt-4 h-[340px]">
+          <canvas id="chart-channel" aria-label="Channel overlap chart showing signal strength in dBm per WiFi channel" role="img"></canvas>
+        </div>
+      </article>
+
+      <!-- Nearby Networks List -->
+      <aside class="card p-6 fade-up flex flex-col" aria-labelledby="nets-title">
+        <header class="flex items-center justify-between">
+          <h2 id="nets-title" class="text-base font-semibold text-zinc-900">Nearby Networks</h2>
+          <span id="nets-band-label" class="text-[11px] font-medium text-zinc-500"></span>
+        </header>
+        <p class="text-xs text-zinc-500 mt-0.5">Discovered via OS WiFi survey</p>
+        <ul id="net-list" class="mt-4 -mx-2 space-y-0.5 overflow-y-auto max-h-[360px] flex-1">
+          <!-- Populated dynamically -->
+        </ul>
+      </aside>
+    </section>
+
+    <!-- ============ ACTIVE CONNECTIONS TABLE (psutil.net_connections) ============ -->
+    <section class="card p-6 fade-up" aria-labelledby="conn-title">
+      <header class="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <h2 id="conn-title" class="text-base font-semibold text-zinc-900">Active System Connections</h2>
+            <span class="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600">Live Sockets</span>
+          </div>
+          <p class="text-xs text-zinc-500 mt-0.5">
+            <span id="conn-total" class="tabular font-medium text-zinc-700">0</span> active sockets · 
+            <span id="conn-est" class="tabular font-medium text-emerald-700">0</span> established
+          </p>
+        </div>
+        
+        <div class="flex flex-wrap items-center gap-2">
+          <label class="relative">
+            <span class="sr-only">Filter connections</span>
+            <svg class="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="conn-search" type="search" placeholder="Filter IP, port, process…" class="w-56 rounded-lg border border-zinc-200 bg-white py-1.5 pl-8 pr-3 text-xs placeholder:text-zinc-400 focus:border-indigo-300 focus:outline-none focus:ring-4 focus:ring-indigo-100 transition" />
+          </label>
+          <label>
+            <span class="sr-only">Filter by status</span>
+            <select id="conn-status" class="rounded-lg border border-zinc-200 bg-white py-1.5 pl-2.5 pr-7 text-xs text-zinc-700 focus:border-indigo-300 focus:outline-none focus:ring-4 focus:ring-indigo-100">
+              <option value="">All statuses</option>
+              <option>Established</option>
+              <option>Listen</option>
+              <option>Time Wait</option>
+              <option>Close Wait</option>
+              <option>Active</option>
+              <option>Syn Sent</option>
+            </select>
+          </label>
+        </div>
+      </header>
+
+      <div class="mt-5 -mx-6 overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr class="border-y border-zinc-100 bg-zinc-50/70 text-left text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+              <th scope="col" class="px-6 py-2.5" data-sort="target_ip">Target IP & Port <span data-arrow></span></th>
+              <th scope="col" class="px-4 py-2.5" data-sort="process">Process / Program <span data-arrow></span></th>
+              <th scope="col" class="px-4 py-2.5" data-sort="local_port">Local Endpoint <span data-arrow></span></th>
+              <th scope="col" class="px-4 py-2.5" data-sort="proto">Protocol <span data-arrow></span></th>
+              <th scope="col" class="px-4 py-2.5" data-sort="status">Status <span data-arrow></span></th>
+              <th scope="col" class="px-6 py-2.5 text-right" data-sort="pid">PID <span data-arrow></span></th>
+            </tr>
+          </thead>
+          <tbody id="conn-body" class="divide-y divide-zinc-100">
+            <!-- Dynamically populated via psutil.net_connections() -->
+          </tbody>
+        </table>
+        <p id="conn-empty" class="hidden px-6 py-10 text-center text-sm text-zinc-400">No active sockets match your filter.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============ HEATMAP PLANNER (content built by heatmap.js) ============ -->
+  <section id="view-heatmap" class="hidden mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-6" aria-labelledby="hm-title"></section>
+
+  <!-- ============ SPEED TEST MODAL (Fast.com / Speedtest.net Style) ============ -->
+  <div id="st-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-md hidden transition-opacity duration-300" role="dialog" aria-modal="true">
+    <div class="card p-8 max-w-xl w-full shadow-modal relative border border-zinc-200/90 bg-white fade-up">
+      
+      <!-- Close Button -->
+      <button id="st-btn-close" type="button" class="absolute top-5 right-5 text-zinc-400 hover:text-zinc-700 p-1.5 rounded-lg hover:bg-zinc-100 transition" title="Close modal">
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+
+      <!-- Modal Header -->
+      <div class="text-center">
+        <div class="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-100 mb-2">
+          <svg class="h-3.5 w-3.5 text-amber-500" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          <span>Cloudflare Edge Benchmark</span>
+        </div>
+        <h3 class="text-xl font-bold tracking-tight text-zinc-900">Internet Speed Analysis</h3>
+        <p id="st-server-info" class="text-xs text-zinc-500 mt-0.5">Benchmarking download & upload bandwidth via Global Anycast Edge</p>
+      </div>
+
+      <!-- Main Circular Gauge -->
+      <div class="relative mt-8 flex flex-col items-center justify-center">
+        <svg class="w-60 h-60" viewBox="0 0 200 200">
+          <!-- Background track -->
+          <circle cx="100" cy="100" r="85" fill="none" stroke-width="10" class="st-gauge-bg" stroke-dasharray="534" stroke-dashoffset="0" stroke-linecap="round" />
+          <!-- Animated Progress Fill -->
+          <circle id="st-gauge-circle" cx="100" cy="100" r="85" fill="none" stroke-width="11" stroke="#6366f1" class="st-gauge-fill" stroke-dasharray="534" stroke-dashoffset="534" stroke-linecap="round" />
+        </svg>
+
+        <!-- Center Readout -->
+        <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
+          <span id="st-current-speed" class="text-5xl font-extrabold tracking-tight text-zinc-900 tabular">0.0</span>
+          <span id="st-unit" class="text-xs font-bold text-zinc-400 tracking-widest uppercase mt-0.5">Mbps</span>
+          <span id="st-phase-badge" class="mt-2.5 rounded-full px-3 py-0.5 text-[11px] font-semibold bg-zinc-100 text-zinc-700">Ready</span>
+        </div>
+      </div>
+
+      <!-- Real-Time Metrics Strip (Download / Upload / Ping) -->
+      <div class="mt-6 grid grid-cols-3 gap-3">
+        <div class="rounded-xl border border-zinc-100 bg-zinc-50/70 p-3 text-center">
+          <div class="flex items-center justify-center gap-1 text-[11px] font-medium text-zinc-500">
+            <span class="h-2 w-2 rounded-full bg-indigo-500"></span> Download
+          </div>
+          <div class="mt-1 flex items-baseline justify-center gap-0.5">
+            <span id="st-down-val" class="text-xl font-bold text-zinc-900 tabular">--</span>
+            <span class="text-[10px] text-zinc-400">Mbps</span>
+          </div>
+        </div>
+        <div class="rounded-xl border border-zinc-100 bg-zinc-50/70 p-3 text-center">
+          <div class="flex items-center justify-center gap-1 text-[11px] font-medium text-zinc-500">
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span> Upload
+          </div>
+          <div class="mt-1 flex items-baseline justify-center gap-0.5">
+            <span id="st-up-val" class="text-xl font-bold text-zinc-900 tabular">--</span>
+            <span class="text-[10px] text-zinc-400">Mbps</span>
+          </div>
+        </div>
+        <div class="rounded-xl border border-zinc-100 bg-zinc-50/70 p-3 text-center">
+          <div class="text-[11px] font-medium text-zinc-500">Latency / Jitter</div>
+          <div class="mt-1 flex items-baseline justify-center gap-1">
+            <span id="st-ping-val" class="text-xl font-bold text-zinc-900 tabular">--</span>
+            <span class="text-[10px] text-zinc-400">ms</span>
+            <span class="text-[10px] text-zinc-300">/</span>
+            <span id="st-jitter-val" class="text-xs font-semibold text-zinc-600 tabular">--</span>
+            <span class="text-[10px] text-zinc-400">ms</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress Bar -->
+      <div class="mt-5">
+        <div class="h-1.5 w-full bg-zinc-100 rounded-full overflow-hidden">
+          <div id="st-progress-fill" class="h-full bg-gradient-to-r from-indigo-500 to-emerald-400 transition-all duration-300" style="width: 0%"></div>
+        </div>
+        <p id="st-status-msg" class="text-[11px] text-zinc-500 text-center mt-2">Click 'Start Speed Test' to benchmark real throughput</p>
+      </div>
+
+      <!-- Completed Result Information Card (Shown when finished) -->
+      <div id="st-result-card" class="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 hidden">
+        <div class="flex items-center justify-between pb-3 border-b border-indigo-100/70">
+          <div>
+            <div id="st-res-grade" class="text-sm font-bold text-indigo-900">Connection Quality: Grade A+</div>
+            <div id="st-res-rating" class="text-xs text-indigo-700 mt-0.5">Ultra-Fast: 4K UHD Streaming & Competitive Gaming</div>
+          </div>
+          <span class="rounded-full bg-emerald-500/10 text-emerald-700 px-2.5 py-1 text-xs font-semibold ring-1 ring-emerald-500/20">Verified</span>
+        </div>
+
+        <dl class="mt-3 grid grid-cols-2 gap-y-2 text-xs">
+          <div><dt class="text-zinc-500">Target Server</dt><dd id="st-res-server" class="font-medium text-zinc-800">Cloudflare Anycast</dd></div>
+          <div><dt class="text-zinc-500">Network Link</dt><dd id="st-res-wifi" class="font-medium text-zinc-800 truncate">Wi-Fi (Active)</dd></div>
+          <div><dt class="text-zinc-500">Public IP</dt><dd id="st-res-ip" class="font-mono text-zinc-700">--</dd></div>
+          <div><dt class="text-zinc-500">Test Timestamp</dt><dd id="st-res-time" class="font-mono text-zinc-700">--</dd></div>
+        </dl>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="mt-6 flex items-center justify-end gap-3">
+        <button id="st-btn-cancel" type="button" class="rounded-lg border border-zinc-200 bg-white px-4 py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-50 transition">Close</button>
+        <button id="st-btn-start" type="button" class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 active:scale-[.98] transition">
+          <svg class="h-3.5 w-3.5 text-amber-300" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          <span id="st-btn-start-label">Start Speed Test</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 pb-10 pt-2 text-[11px] text-zinc-400 flex flex-wrap justify-between gap-2">
+    <span>Netscope Full-Stack Network Analyzer · Python psutil & OS netsh</span>
+    <span>Telemetry refresh: 1s WebSocket stream · WiFi scan: on-demand & periodic</span>
+  </footer>
+
+  <!-- ===================================================================
+       JAVASCRIPT APPLICATION
+       =================================================================== -->
+  <script>
+  'use strict';
+
+  /* ------------------------------------------------------------------ *
+   * Core Utilities
+   * ------------------------------------------------------------------ */
+  const Utils = {
+    $: (s, r = document) => r.querySelector(s),
+    $$: (s, r = document) => [...r.querySelectorAll(s)],
+    clamp: (v, a, b) => Math.min(b, Math.max(a, v)),
+    rgba(hex, a) {
+      const n = parseInt(hex.replace('#',''), 16);
+      return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+    },
+    time: (d = new Date()) => d.toLocaleTimeString('en-GB', { hour12: false }),
+    esc: (s) => String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])),
+    formatBytes(mb) {
+      if (mb >= 1024) return (mb / 1024).toFixed(2) + ' GB';
+      if (mb >= 1) return mb.toFixed(1) + ' MB';
+      return (mb * 1024).toFixed(0) + ' KB';
+    },
+    quality(rssi) {
+      return Utils.clamp(Math.round(2 * (rssi + 100)), 0, 100);
+    },
+    freq(band, ch) {
+      return (band.includes('2.4') ? (ch === 14 ? 2484 : 2407 + 5 * ch) : 5000 + 5 * ch);
+    },
+    sparkline(svg, values, color) {
+      if (!values || !values.length) return;
+      const min = Math.min(...values), max = Math.max(...values), span = max - min || 1;
+      const pts = values.map((v, i) => [(i / (values.length - 1 || 1)) * 100, 30 - ((v - min) / span) * 26]);
+      const line = pts.map((p) => p.join(',')).join(' ');
+      const id = svg.closest('article').id + '-grad';
+      svg.innerHTML = `
+        <defs><linearGradient id="${id}" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0" stop-color="${color}" stop-opacity=".22"/><stop offset="1" stop-color="${color}" stop-opacity="0"/>
+        </linearGradient></defs>
+        <polygon points="0,32 ${line} 100,32" fill="url(#${id})"/>
+        <polyline points="${line}" fill="none" stroke="${color}" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>`;
+    }
+  };
+
+  /* ------------------------------------------------------------------ *
+   * Application State & Color Palette
+   * ------------------------------------------------------------------ */
+  const AppState = {
+    historyLength: 120,
+    windowSize: 60,
+    paused: false,
+    currentBand: '2.4',
+    selectedHighlightId: null,
+    
+    // Telemetry storage
+    bwHistory: { t: [], down: [], up: [] },
+    pingHistory: [],
+    
+    // Active cached models
+    currentWifi: null,
+    networks: [],
+    connections: [],
+    routing: {},
+    
+    palette: ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#14b8a6', '#ef4444', '#f97316', '#64748b'],
+    channels5: [36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144, 149, 153, 157, 161, 165]
+  };
+
+  /* ------------------------------------------------------------------ *
+   * Chart 1: Bandwidth Monitor (Chart.js)
+   * ------------------------------------------------------------------ */
+  const BandwidthChart = (() => {
+    let chart;
+    const gradient = (color) => (ctx) => {
+      const { chart: c } = ctx;
+      const area = c.chartArea;
+      if (!area) return 'transparent';
+      const g = c.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+      g.addColorStop(0, Utils.rgba(color, 0.22));
+      g.addColorStop(1, Utils.rgba(color, 0));
+      return g;
+    };
+
+    function init(canvas) {
+      const ds = (label, color) => ({
+        label, data: [], borderColor: color, backgroundColor: gradient(color), fill: true,
+        borderWidth: 2, tension: 0.4, pointRadius: 0, pointHoverRadius: 4,
+        pointHoverBackgroundColor: '#fff', pointHoverBorderColor: color, pointHoverBorderWidth: 2,
+      });
+
+      chart = new Chart(canvas, {
+        type: 'line',
+        data: { labels: [], datasets: [ds('Download', '#6366f1'), ds('Upload', '#10b981')] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          animation: { duration: 400, easing: 'easeOutQuart' },
+          interaction: { mode: 'index', intersect: false },
+          scales: {
+            x: { grid: { display: false }, border: { display: false }, ticks: { maxTicksLimit: 7, maxRotation: 0, font: { size: 11 } } },
+            y: { beginAtZero: true, suggestedMax: 10, grid: { color: '#f1f1f3' }, border: { display: false },
+                 ticks: { maxTicksLimit: 6, font: { size: 11 }, callback: (v) => v + ' Mbps' } },
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: 'rgba(24,24,27,.92)', titleColor: '#fafafa', bodyColor: '#e4e4e7',
+              padding: 10, cornerRadius: 10, boxPadding: 4,
+              callbacks: { label: (c) => ` ${c.dataset.label}: ${c.parsed.y.toFixed(2)} Mbps` }
+            },
+          },
+        },
+      });
+    }
+
+    function update(hist, windowSize) {
+      if (!chart) return;
+      chart.data.labels = hist.t.slice(-windowSize);
+      chart.data.datasets[0].data = hist.down.slice(-windowSize);
+      chart.data.datasets[1].data = hist.up.slice(-windowSize);
+      chart.update();
+    }
+
+    return { init, update };
+  })();
+
+  /* ------------------------------------------------------------------ *
+   * Chart 2: WiFi Channel Analyzer (Spectral Curves & Overlap)
+   * ------------------------------------------------------------------ */
+  const ChannelChart = (() => {
+    let chart;
+    const FLOOR = -100, STEPS = 25, PEAK = 12;
+
+    function curve(n) {
+      const half = (n.width_mhz || 20) / 10;
+      return Array.from({ length: STEPS }, (_, i) => {
+        const t = (i / (STEPS - 1)) * 2 - 1;
+        return { x: n.channel + t * half, y: FLOOR + (n.signal_dbm - FLOOR) * (1 - t * t) };
+      });
+    }
+
+    const peakLabelsPlugin = {
+      id: 'peakLabels',
+      afterDatasetsDraw(c) {
+        const { ctx, chartArea } = c;
+        const placed = [];
+        ctx.save();
+        ctx.font = '600 11px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+
+        const items = c.data.datasets
+          .map((ds, i) => ({ ds, pt: c.getDatasetMeta(i).data[PEAK] }))
+          .filter((o) => o.pt)
+          .sort((a, b) => a.pt.y - b.pt.y);
+
+        items.forEach(({ ds, pt }) => {
+          const w = ctx.measureText(ds.label).width + 8;
+          let y = pt.y - 6;
+          while (placed.some((p) => Math.abs(p.x - pt.x) < (p.w + w) / 2 && Math.abs(p.y - y) < 13)) {
+            y -= 13;
+          }
+          y = Math.max(y, chartArea.top + 12);
+          placed.push({ x: pt.x, y, w });
+
+          ctx.globalAlpha = AppState.selectedHighlightId && AppState.selectedHighlightId !== ds._id ? 0.2 : 1;
+          ctx.fillStyle = ds._connected ? '#3730a3' : ds._color;
+          ctx.fillText(ds.label + (ds._connected ? '  ●' : ''), pt.x, y);
+        });
+        ctx.restore();
+      },
+    };
+
+    function scales(band) {
+      const x = band === '2.4'
+        ? { type: 'linear', min: 0, max: 14, ticks: { stepSize: 1, callback: (v) => (v >= 1 && v <= 13 ? v : '') } }
+        : { type: 'linear', min: 30, max: 170, afterBuildTicks: (s) => { s.ticks = AppState.channels5.map((v) => ({ value: v })); }, ticks: { autoSkip: true, maxRotation: 0 } };
+
+      return {
+        x: { ...x, grid: { color: '#f1f1f3' }, border: { display: false },
+             title: { display: true, text: `Wi-Fi Channel · ${band} GHz`, color: '#a1a1aa', font: { size: 11 } },
+             ticks: { ...x.ticks, font: { size: 11 } } },
+        y: { min: FLOOR, max: -20, grid: { color: '#f1f1f3' }, border: { display: false },
+             ticks: { stepSize: 10, font: { size: 11 }, callback: (v) => v + ' dBm' } },
+      };
+    }
+
+    function init(canvas) {
+      chart = new Chart(canvas, {
+        type: 'line',
+        data: { datasets: [] },
+        options: {
+          responsive: true, maintainAspectRatio: false, parsing: false,
+          animation: { duration: 600, easing: 'easeOutCubic' },
+          scales: scales('2.4'),
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: 'rgba(24,24,27,.92)', titleColor: '#fafafa', bodyColor: '#e4e4e7',
+              padding: 10, cornerRadius: 10,
+              filter: (item, i) => i === 0,
+              callbacks: {
+                title: (items) => items[0].dataset.label,
+                label: (c) => {
+                  const n = c.dataset._net;
+                  return ` CH ${n.channel} · ${n.signal_dbm} dBm (${n.signal_percent}%) · ${n.width_mhz || 20} MHz`;
+                },
+                afterLabel: (c) => {
+                  const n = c.dataset._net;
+                  return ` BSSID: ${n.bssid} · ${n.auth || 'WPA2'}`;
+                }
+              }
+            }
+          }
+        },
+        plugins: [peakLabelsPlugin]
+      });
+    }
+
+    function render(networks, currentWifi, band, highlightId) {
+      if (!chart) return;
+      const targetBand = band.includes('5') ? '5 GHz' : '2.4 GHz';
+      const filtered = networks.filter((n) => (n.band || '2.4 GHz').includes(band));
+
+      const datasets = filtered.map((n, idx) => {
+        const isConn = currentWifi && currentWifi.connected && (n.bssid === currentWifi.bssid || n.ssid === currentWifi.ssid);
+        const color = isConn ? '#6366f1' : AppState.palette[idx % AppState.palette.length];
+        const isDim = highlightId && highlightId !== n.id;
+        const isHighlight = isConn || n.id === highlightId;
+
+        return {
+          _id: n.id,
+          _color: color,
+          _connected: isConn,
+          _net: n,
+          label: n.ssid || '• Hidden Network •',
+          data: curve(n),
+          borderColor: Utils.rgba(color, isDim ? 0.2 : 1),
+          backgroundColor: Utils.rgba(color, isDim ? 0.04 : isHighlight ? 0.24 : 0.12),
+          borderWidth: isHighlight ? 2.5 : 1.5,
+          fill: { value: FLOOR },
+          tension: 0.4,
+          pointRadius: 0
+        };
+      });
+
+      chart.options.scales = scales(band);
+      chart.data.datasets = datasets;
+      chart.update();
+    }
+
+    return { init, render };
+  })();
+
+  /* ------------------------------------------------------------------ *
+   * UI Manager — DOM Updates & Renderers
+   * ------------------------------------------------------------------ */
+  const UIManager = (() => {
+    const { $, $$, esc, quality } = Utils;
+
+    function updatePingCard(ping) {
+      const card = $('#card-ping');
+      const badge = $('[data-badge]', card);
+      const val = $('[data-value]', card);
+      const sub = $('[data-sub]', card);
+
+      if (ping !== null && ping !== undefined) {
+        val.textContent = ping;
+        val.style.color = ping > 120 ? '#e11d48' : '';
+        AppState.pingHistory.push(ping);
+        if (AppState.pingHistory.length > 30) AppState.pingHistory.shift();
+
+        const avg = (AppState.pingHistory.reduce((a,b)=>a+b,0) / AppState.pingHistory.length).toFixed(1);
+        sub.textContent = avg;
+
+        if (ping < 45) {
+          badge.textContent = 'Excellent';
+          badge.className = 'rounded-full px-2 py-0.5 text-[10px] font-semibold bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100';
+          Utils.sparkline($('[data-spark]', card), AppState.pingHistory, '#10b981');
+        } else if (ping < 110) {
+          badge.textContent = 'Good';
+          badge.className = 'rounded-full px-2 py-0.5 text-[10px] font-semibold bg-amber-50 text-amber-700 ring-1 ring-amber-100';
+          Utils.sparkline($('[data-spark]', card), AppState.pingHistory, '#f59e0b');
+        } else {
+          badge.textContent = 'Poor';
+          badge.className = 'rounded-full px-2 py-0.5 text-[10px] font-semibold bg-rose-50 text-rose-700 ring-1 ring-rose-100';
+          Utils.sparkline($('[data-spark]', card), AppState.pingHistory, '#ef4444');
+        }
+      } else {
+        val.textContent = '—';
+        badge.textContent = 'Timeout';
+        badge.className = 'rounded-full px-2 py-0.5 text-[10px] font-semibold bg-rose-50 text-rose-700 ring-1 ring-rose-100';
+      }
+    }
+
+    function updateBandwidthUI(bw) {
+      $('#bw-down').textContent = bw.download_mbps.toFixed(2);
+      $('#bw-up').textContent = bw.upload_mbps.toFixed(2);
+      $('#stat-down').textContent = bw.download_mbps.toFixed(1);
+      $('#stat-up').textContent = bw.upload_mbps.toFixed(1);
+
+      const h = AppState.bwHistory;
+      h.down.push(bw.download_mbps);
+      h.up.push(bw.upload_mbps);
+      h.t.push(Utils.time());
+      if (h.down.length > AppState.historyLength) {
+        h.down.shift(); h.up.shift(); h.t.shift();
+      }
+
+      const peakDown = Math.max(...h.down, 0);
+      const peakUp = Math.max(...h.up, 0);
+      $('#bw-peak-down').textContent = peakDown.toFixed(1);
+      $('#bw-peak-up').textContent = peakUp.toFixed(1) + ' Mbps';
+
+      const avgDown = (h.down.reduce((a,b)=>a+b,0) / h.down.length).toFixed(1);
+      const avgUp = (h.up.reduce((a,b)=>a+b,0) / h.up.length).toFixed(1);
+      $('#bw-avg').textContent = `${avgDown} / ${avgUp}`;
+
+      $('#bw-total-down').textContent = Utils.formatBytes(bw.total_recv_mb);
+      $('#bw-total-up').textContent = Utils.formatBytes(bw.total_sent_mb);
+      $('#stat-total').textContent = Utils.formatBytes(bw.total_recv_mb + bw.total_sent_mb);
+
+      Utils.sparkline($('#card-bw [data-spark]'), h.down.slice(-25), '#6366f1');
+      BandwidthChart.update(h, AppState.windowSize);
+    }
+
+    function updateRoutingUI(routing) {
+      if (!routing) return;
+      $('#card-ip [data-value]').textContent = routing.local_ip || '127.0.0.1';
+      $('#card-ip [data-subnet]').textContent = routing.netmask || '255.255.255.0';
+      $('#card-ip [data-gw]').textContent = routing.gateway || 'Unknown';
+      $('#card-ip [data-pub]').textContent = routing.public_ip || 'Detecting...';
+
+      if (routing.active_nic) {
+        $('#nic-name').textContent = routing.active_nic;
+        $('#hdr-adapter').textContent = routing.active_nic;
+      }
+      if (routing.mac) {
+        $('#nic-mac').textContent = routing.mac;
+      }
+    }
+
+    function updateCurrentWifiUI(wifi) {
+      if (!wifi) return;
+      AppState.currentWifi = wifi;
+
+      const isConn = wifi.connected && wifi.state === 'connected';
+      $('#hdr-ssid').innerHTML = isConn
+        ? `<span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span><span>${esc(wifi.ssid)} · CH ${wifi.channel}</span>`
+        : `<span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span><span>Disconnected</span>`;
+
+      $('#link-badge').textContent = isConn ? 'Connected' : 'Disconnected';
+      $('#link-badge').className = isConn
+        ? 'inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-100'
+        : 'inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700 ring-1 ring-rose-100';
+
+      $('#link-title').textContent = isConn ? wifi.ssid : 'No Active Wi-Fi';
+      $('#link-bssid').textContent = wifi.bssid ? wifi.bssid.toUpperCase() : '00:00:00:00:00:00';
+
+      const sigDbm = wifi.signal_dbm || -100;
+      const q = wifi.signal_percent || quality(sigDbm);
+      $('#link-rssi').textContent = sigDbm;
+      $('#link-quality').textContent = q + '%';
+      $('#link-quality-label').textContent = q > 75 ? 'Excellent Signal' : q > 50 ? 'Good Signal' : 'Weak Signal';
+      $('#link-marker').style.left = Utils.clamp(((sigDbm + 100) / 70) * 100, 0, 100) + '%';
+
+      $('#wifi-quick-ssid').textContent = wifi.ssid || 'Disconnected';
+      $('#wifi-quick-band').textContent = isConn ? `CH ${wifi.channel} · ${wifi.band || '2.4 GHz'}` : 'Not Associated';
+      $('#wifi-quick-sig').textContent = isConn ? `${sigDbm} dBm` : '—';
+      $('#wifi-quick-rate').textContent = isConn ? `${wifi.rx_rate_mbps || 0} Mbps` : '—';
+
+      const bars = q >= 75 ? 3 : q >= 45 ? 2 : 1;
+      $$('#wifi-bars-icon [data-arc]').forEach((p) => {
+        p.style.opacity = +p.dataset.arc <= bars ? 1 : 0.25;
+      });
+
+      if (wifi.adapter) $('#nic-model').textContent = wifi.adapter;
+      if (wifi.radio) $('#nic-proto').textContent = wifi.radio;
+
+      const rows = [
+        ['Channel', `${wifi.channel || '--'} <span class="text-zinc-400">(${wifi.band || '2.4 GHz'})</span>`],
+        ['Frequency', `${(Utils.freq(wifi.band || '2.4', wifi.channel || 1) / 1000).toFixed(3)} GHz`],
+        ['Radio Standard', wifi.radio || '802.11'],
+        ['Security & Cipher', `${wifi.auth || 'WPA2'} <span class="text-zinc-400">· ${wifi.cipher || 'CCMP'}</span>`],
+        ['Rx / Tx Rate', `${wifi.rx_rate_mbps || 0} / ${wifi.tx_rate_mbps || 0} Mbps`],
+        ['Physical MAC', `<span class="font-mono text-xs">${wifi.mac || '--'}</span>`],
+      ];
+
+      $('#link-details').innerHTML = rows.map(([k, v]) =>
+        `<div class="flex items-center justify-between py-2.5"><dt class="text-zinc-500">${k}</dt><dd class="font-medium text-zinc-800 text-right">${v}</dd></div>`).join('');
+    }
+
+    function renderNetworksUI(networks, currentWifi) {
+      AppState.networks = networks;
+      const band = AppState.currentBand;
+      const filtered = networks.filter((n) => (n.band || '2.4 GHz').includes(band));
+
+      $('#nets-band-label').textContent = `${filtered.length} found · ${band} GHz`;
+      $('#ch-count').textContent = filtered.length;
+
+      const curNet = filtered.find((n) => currentWifi && currentWifi.connected && (n.bssid === currentWifi.bssid || n.ssid === currentWifi.ssid));
+      const overlapCount = curNet ? filtered.filter((n) => n.id !== curNet.id && Math.abs(n.channel - curNet.channel) < 4).length : 0;
+      $('#ch-overlap').textContent = overlapCount;
+
+      const candidateChannels = band.includes('5') ? [36, 40, 44, 48, 149, 153, 157, 161] : [1, 6, 11];
+      let bestChannel = candidateChannels[0], minCongestion = Infinity;
+      candidateChannels.forEach((cand) => {
+        const score = filtered.reduce((acc, n) => {
+          const d = Math.abs(cand - n.channel);
+          return d < 4 ? acc + (1 - d / 4) * (n.signal_percent || 50) : acc;
+        }, 0);
+        if (score < minCongestion) {
+          minCongestion = score;
+          bestChannel = cand;
+        }
+      });
+      $('#ch-best').textContent = `CH ${bestChannel}`;
+
+      const ul = $('#net-list');
+      if (!filtered.length) {
+        ul.innerHTML = `<li class="p-4 text-center text-xs text-zinc-400">No ${band} GHz networks in range. Click "Scan Now".</li>`;
+      } else {
+        ul.innerHTML = filtered.map((n, i) => {
+          const isConn = currentWifi && currentWifi.connected && (n.bssid === currentWifi.bssid || n.ssid === currentWifi.ssid);
+          const color = isConn ? '#6366f1' : AppState.palette[i % AppState.palette.length];
+          const q = n.signal_percent || quality(n.signal_dbm);
+
+          return `
+          <li class="net-item rounded-xl px-2 py-2.5 cursor-default ${isConn ? 'bg-indigo-50/70' : ''}" data-id="${n.id}">
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background:${color}"></span>
+                <span class="truncate text-sm font-medium ${n.ssid ? 'text-zinc-800' : 'italic text-zinc-400'}">${esc(n.ssid)}</span>
+                ${isConn ? '<span class="shrink-0 rounded-full bg-indigo-600 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-white">Connected</span>' : ''}
+              </div>
+              <span class="shrink-0 font-mono text-xs tabular text-zinc-600">${n.signal_dbm} dBm</span>
+            </div>
+            <div class="mt-1.5 flex items-center gap-3">
+              <span class="w-12 shrink-0 font-mono text-[10px] text-zinc-400">CH ${n.channel}</span>
+              <div class="h-1.5 flex-1 rounded-full bg-zinc-100 overflow-hidden">
+                <div class="bar-fill h-full rounded-full" style="width:${q}%;background:${color}"></div>
+              </div>
+              <span class="w-12 shrink-0 text-right text-[10px] text-zinc-400">${n.auth ? n.auth.split('-')[0] : 'WPA2'}</span>
+            </div>
+          </li>`;
+        }).join('');
+
+        $$('#net-list li').forEach((li) => {
+          li.addEventListener('mouseenter', () => {
+            AppState.selectedHighlightId = li.dataset.id;
+            ChannelChart.render(AppState.networks, AppState.currentWifi, AppState.currentBand, AppState.selectedHighlightId);
+          });
+          li.addEventListener('mouseleave', () => {
+            AppState.selectedHighlightId = null;
+            ChannelChart.render(AppState.networks, AppState.currentWifi, AppState.currentBand, null);
+          });
+        });
+      }
+
+      ChannelChart.render(networks, currentWifi, band, AppState.selectedHighlightId);
+    }
+
+    // Connections Table Manager
+    const tableState = { sort: 'status', dir: 1, q: '', status: '' };
+    const STATUS_MAP = {
+      'Established': 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+      'Active': 'bg-sky-50 text-sky-700 ring-sky-100',
+      'Listen': 'bg-indigo-50 text-indigo-700 ring-indigo-100',
+      'Listening': 'bg-indigo-50 text-indigo-700 ring-indigo-100',
+      'Time Wait': 'bg-zinc-100 text-zinc-600 ring-zinc-200',
+      'Close Wait': 'bg-orange-50 text-orange-700 ring-orange-100',
+      'Syn Sent': 'bg-violet-50 text-violet-700 ring-violet-100',
+    };
+
+    function renderConnectionsUI(conns) {
+      AppState.connections = conns;
+      const { q, status, sort, dir } = tableState;
+      const needle = q.trim().toLowerCase();
+
+      let rows = conns.filter((c) =>
+        (!status || c.status.toLowerCase().includes(status.toLowerCase())) &&
+        (!needle || [c.target_ip, String(c.target_port), c.process, c.local_ip, String(c.local_port), c.proto].some((v) => (v || '').toLowerCase().includes(needle))));
+
+      const key = {
+        target_ip: (c) => c.target_ip,
+        process: (c) => c.process,
+        local_port: (c) => c.local_port,
+        proto: (c) => c.proto,
+        status: (c) => c.status,
+        pid: (c) => c.pid,
+      }[sort] || ((c) => c.status);
+
+      rows = rows.slice().sort((a, b) => {
+        const x = key(a), y = key(b);
+        return (x > y ? 1 : x < y ? -1 : 0) * dir;
+      });
+
+      $('#conn-total').textContent = conns.length;
+      $('#conn-est').textContent = conns.filter((c) => c.status === 'Established').length;
+      $('#conn-empty').classList.toggle('hidden', rows.length > 0);
+
+      $('#conn-body').innerHTML = rows.map((c) => `
+        <tr class="hover:bg-zinc-50/80 transition-colors">
+          <td class="px-6 py-3 whitespace-nowrap">
+            <div class="font-mono text-[13px] text-zinc-900">${c.target_ip}${c.target_port ? `<span class="text-zinc-400">:${c.target_port}</span>` : ''}</div>
+          </td>
+          <td class="px-4 py-3 whitespace-nowrap">
+            <span class="text-[13px] font-medium text-zinc-800">${esc(c.process)}</span>
+          </td>
+          <td class="px-4 py-3 whitespace-nowrap font-mono text-xs text-zinc-500">
+            ${c.local_ip}:${c.local_port}
+          </td>
+          <td class="px-4 py-3 whitespace-nowrap">
+            <span class="font-mono text-xs font-semibold ${c.proto === 'TCP' ? 'text-indigo-600' : 'text-sky-600'}">${c.proto}</span>
+          </td>
+          <td class="px-4 py-3 whitespace-nowrap">
+            <span class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ${STATUS_MAP[c.status] || 'bg-zinc-100 text-zinc-600 ring-zinc-200'}">
+              <span class="h-1.5 w-1.5 rounded-full ${c.status === 'Established' ? 'bg-emerald-500' : 'bg-zinc-400'}"></span>
+              ${c.status}
+            </span>
+          </td>
+          <td class="px-6 py-3 whitespace-nowrap text-right font-mono text-xs text-zinc-400">
+            ${c.pid || '—'}
+          </td>
+        </tr>`).join('');
+
+      $$('th[data-sort]').forEach((th) => {
+        const active = th.dataset.sort === sort;
+        th.querySelector('[data-arrow]').textContent = active ? (dir > 0 ? '↑' : '↓') : '';
+        th.setAttribute('aria-sort', active ? (dir > 0 ? 'ascending' : 'descending') : 'none');
+      });
+    }
+
+    function setWebSocketStatus(connected) {
+      const s = $('#ws-status');
+      s.className = connected
+        ? 'inline-flex items-center gap-2 rounded-full bg-emerald-50 text-emerald-700 px-3 py-1.5 text-xs font-medium ring-1 ring-emerald-100'
+        : 'inline-flex items-center gap-2 rounded-full bg-rose-50 text-rose-700 px-3 py-1.5 text-xs font-medium ring-1 ring-rose-100';
+      $('#ws-status .live-dot').className = 'live-dot h-2 w-2 rounded-full ' + (connected ? 'bg-emerald-500 text-emerald-500' : 'bg-rose-500 text-rose-500');
+      $('#ws-label').textContent = connected ? 'Live' : 'Disconnected';
+    }
+
+    const clock = () => {
+      $('#clock').textContent = new Date().toLocaleString('en-GB', { hour12: false, weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    };
+
+    return {
+      updatePingCard,
+      updateBandwidthUI,
+      updateRoutingUI,
+      updateCurrentWifiUI,
+      renderNetworksUI,
+      renderConnectionsUI,
+      setWebSocketStatus,
+      tableState,
+      clock
+    };
+  })();
+
+  /* ------------------------------------------------------------------ *
+   * Speed Test Manager (Fast.com / Speedtest.net Experience)
+   * ------------------------------------------------------------------ */
+  const SpeedTestManager = (() => {
+    const { $, esc } = Utils;
+    let ws = null;
+    let running = false;
+    let abortCtl = null;
+    const CIRCLE_CIRCUMFERENCE = 534; // 2 * PI * 85
+
+    function getSpeedtestWsUrl() {
+      if (location.protocol === 'file:') {
+        return 'ws://127.0.0.1:5000/ws/speedtest';
+      }
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${proto}//${location.host}/ws/speedtest`;
+    }
+
+    function openModal() {
+      $('#st-modal').classList.remove('hidden');
+      resetUI();
+    }
+
+    function closeModal() {
+      $('#st-modal').classList.add('hidden');
+      if (abortCtl) { try { abortCtl.abort(); } catch (e) {} }
+      if (running && ws) {
+        try { ws.close(); } catch(e) {}
+      }
+      running = false;
+    }
+
+    function resetUI() {
+      $('#st-current-speed').textContent = '0.0';
+      $('#st-unit').textContent = 'Mbps';
+      $('#st-phase-badge').textContent = 'Ready';
+      $('#st-phase-badge').className = 'mt-2.5 rounded-full px-3 py-0.5 text-[11px] font-semibold bg-zinc-100 text-zinc-700';
+      
+      $('#st-down-val').textContent = '--';
+      $('#st-up-val').textContent = '--';
+      $('#st-ping-val').textContent = '--';
+      $('#st-jitter-val').textContent = '--';
+
+      $('#st-gauge-circle').style.strokeDashoffset = CIRCLE_CIRCUMFERENCE;
+      $('#st-gauge-circle').style.stroke = '#6366f1';
+      $('#st-progress-fill').style.width = '0%';
+      $('#st-status-msg').textContent = 'Click "Start Speed Test" to benchmark real upload & download throughput';
+      
+      $('#st-result-card').classList.add('hidden');
+      $('#st-btn-start').disabled = false;
+      $('#st-btn-start-label').textContent = 'Start Speed Test';
+      running = false;
+    }
+
+    /* ---- Browser-side speed test (Cloudflare edge, CORS-enabled) ---- */
+    const CF = 'https://speed.cloudflare.com';
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    async function measureLatency(signal) {
+      const samples = [];
+      for (let i = 0; i < 8 && running; i++) {
+        const t0 = performance.now();
+        const r = await fetch(`${CF}/__down?bytes=0&r=${Math.random()}`, { cache: 'no-store', signal });
+        await r.arrayBuffer();
+        samples.push(performance.now() - t0);
+        await sleep(60);
+      }
+      if (!samples.length) throw new Error('no latency samples');
+      const used = samples.length > 2 ? samples.slice(1) : samples; // drop TLS warm-up sample
+      const ping = used.reduce((a, b) => a + b, 0) / used.length;
+      let jit = 0;
+      for (let i = 1; i < used.length; i++) jit += Math.abs(used[i] - used[i - 1]);
+      jit = used.length > 1 ? jit / (used.length - 1) : 0;
+      return { ping: Math.round(ping), jitter: Math.round(jit * 10) / 10 };
+    }
+
+    async function measureDownload(signal, lat, durationMs) {
+      const STREAMS = 4;
+      let bytes = 0;
+      const t0 = performance.now();
+      const ctl = new AbortController();
+      signal.addEventListener('abort', () => ctl.abort());
+
+      const worker = async () => {
+        while (running && performance.now() - t0 < durationMs) {
+          try {
+            const r = await fetch(`${CF}/__down?bytes=25000000&r=${Math.random()}`, { cache: 'no-store', signal: ctl.signal });
+            const reader = r.body.getReader();
+            while (running) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              bytes += value.length;
+            }
+          } catch (e) { break; }
+        }
+      };
+      const jobs = Array.from({ length: STREAMS }, worker);
+
+      let mbps = 0;
+      while (running && performance.now() - t0 < durationMs) {
+        await sleep(150);
+        const el = (performance.now() - t0) / 1000;
+        mbps = (bytes * 8) / (el * 1e6);
+        handleUpdate({ phase: 'download', progress: 15 + Math.min(45, (el * 1000 / durationMs) * 45), current_speed: mbps, download_mbps: mbps, ping_ms: lat.ping, jitter_ms: lat.jitter });
+      }
+      ctl.abort();
+      await Promise.allSettled(jobs);
+      const total = Math.max((performance.now() - t0) / 1000, 0.1);
+      return (bytes * 8) / (total * 1e6);
+    }
+
+    async function measureUpload(lat, down, durationMs) {
+      const STREAMS = 3;
+      const blob = new Blob([new Uint8Array(2 * 1024 * 1024)]);
+      let bytes = 0;
+      const t0 = performance.now();
+      const xhrs = new Set();
+
+      const worker = () => new Promise((resolve) => {
+        const loop = () => {
+          if (!running || performance.now() - t0 >= durationMs) return resolve();
+          const xhr = new XMLHttpRequest();
+          xhrs.add(xhr);
+          let last = 0;
+          xhr.open('POST', `${CF}/__up?r=${Math.random()}`);
+          xhr.upload.onprogress = (e) => { bytes += e.loaded - last; last = e.loaded; };
+          xhr.onload = xhr.onerror = xhr.onabort = () => { xhrs.delete(xhr); loop(); };
+          xhr.send(blob);
+        };
+        loop();
+      });
+      const jobs = Array.from({ length: STREAMS }, worker);
+
+      let mbps = 0;
+      while (running && performance.now() - t0 < durationMs) {
+        await sleep(150);
+        const el = (performance.now() - t0) / 1000;
+        mbps = (bytes * 8) / (el * 1e6);
+        handleUpdate({ phase: 'upload', progress: 60 + Math.min(38, (el * 1000 / durationMs) * 38), current_speed: mbps, upload_mbps: mbps, download_mbps: down, ping_ms: lat.ping, jitter_ms: lat.jitter });
+      }
+      xhrs.forEach((x) => { try { x.abort(); } catch (e) {} });
+      await Promise.allSettled(jobs);
+      const total = Math.max((performance.now() - t0) / 1000, 0.1);
+      return (bytes * 8) / (total * 1e6);
+    }
+
+    async function startTest() {
+      if (running) return;
+      resetUI();
+      running = true;
+      abortCtl = new AbortController();
+
+      $('#st-btn-start').disabled = true;
+      $('#st-btn-start-label').textContent = 'Testing...';
+      handleUpdate({ phase: 'ping', progress: 5 });
+
+      try {
+        const lat = await measureLatency(abortCtl.signal);
+        if (!running) return;
+        handleUpdate({ phase: 'ping', progress: 15, ping_ms: lat.ping, jitter_ms: lat.jitter });
+
+        const down = await measureDownload(abortCtl.signal, lat, 8000);
+        if (!running) return;
+        if (down <= 0) throw new Error('no download data');
+        handleUpdate({ phase: 'download_done', progress: 60, download_mbps: down, ping_ms: lat.ping, jitter_ms: lat.jitter });
+
+        const up = await measureUpload(lat, down, 6000);
+        if (!running) return;
+
+        let grade, rating;
+        if (down >= 50 && lat.ping <= 50) { grade = 'A+'; rating = 'Ultra-Fast: 4K UHD Streaming & Competitive Low-Latency Gaming'; }
+        else if (down >= 25) { grade = 'A'; rating = 'Fast: Smooth 4K/HD Streaming & Multi-User Video Conferences'; }
+        else if (down >= 10) { grade = 'B'; rating = 'Good: Reliable HD Video Streaming & Standard Web Browsing'; }
+        else { grade = 'C'; rating = 'Basic: Suitable for Messaging, Music & General Browsing'; }
+
+        handleUpdate({
+          phase: 'complete', progress: 100,
+          result: {
+            download_mbps: Math.round(down * 10) / 10,
+            upload_mbps: Math.round(up * 10) / 10,
+            ping_ms: lat.ping, jitter_ms: lat.jitter,
+            grade, rating,
+            server: 'Cloudflare Edge (browser-direct)',
+            public_ip: ($('#card-ip [data-value]') || {}).textContent || '',
+            timestamp: new Date().toLocaleString()
+          }
+        });
+      } catch (err) {
+        if (running) {
+          console.error('Speed test failed:', err);
+          handleError('Cannot reach speed.cloudflare.com. Check your internet connection / firewall / ad-blocker.');
+        }
+      }
+    }
+
+    /* Legacy server-side test (Flask /ws/speedtest), kept as an alternative */
+    function startTestServer() {
+      if (running) return;
+      running = true;
+      resetUI();
+      running = true;
+
+      $('#st-btn-start').disabled = true;
+      $('#st-btn-start-label').textContent = 'Testing...';
+      $('#st-phase-badge').textContent = 'Connecting...';
+      $('#st-phase-badge').className = 'mt-2.5 rounded-full px-3 py-0.5 text-[11px] font-semibold bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100';
+
+      try {
+        ws = new WebSocket(getSpeedtestWsUrl());
+
+        ws.onopen = () => {
+          ws.send(JSON.stringify({ action: 'start' }));
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            handleUpdate(data);
+          } catch (e) {
+            console.error('Error handling speedtest frame:', e);
+          }
+        };
+
+        ws.onerror = (err) => {
+          console.error('Speedtest WS error:', err);
+          handleError('Connection failed. Server may be busy.');
+        };
+
+        ws.onclose = () => {
+          if (running) {
+            running = false;
+            $('#st-btn-start').disabled = false;
+            $('#st-btn-start-label').textContent = 'Test Again';
+          }
+        };
+
+      } catch (err) {
+        handleError('Failed to initiate speed test.');
+      }
+    }
+
+    function handleUpdate(data) {
+      const progress = data.progress || 0;
+      $('#st-progress-fill').style.width = `${progress}%`;
+
+      // Update Gauge progress offset
+      const offset = CIRCLE_CIRCUMFERENCE - (progress / 100) * CIRCLE_CIRCUMFERENCE;
+      $('#st-gauge-circle').style.strokeDashoffset = offset;
+
+      if (data.ping_ms !== undefined) $('#st-ping-val').textContent = data.ping_ms;
+      if (data.jitter_ms !== undefined) $('#st-jitter-val').textContent = data.jitter_ms;
+
+      if (data.phase === 'ping') {
+        $('#st-phase-badge').textContent = 'Testing Latency & Jitter...';
+        $('#st-phase-badge').className = 'mt-2.5 rounded-full px-3 py-0.5 text-[11px] font-semibold bg-amber-50 text-amber-700 ring-1 ring-amber-100';
+        $('#st-status-msg').textContent = 'Measuring packet round-trip time...';
+      } else if (data.phase === 'download') {
+        const cur = data.current_speed || 0;
+        $('#st-current-speed').textContent = cur.toFixed(1);
+        $('#st-down-val').textContent = cur.toFixed(1);
+        $('#st-gauge-circle').style.stroke = '#6366f1';
+        $('#st-phase-badge').textContent = 'Measuring Download Speed...';
+        $('#st-phase-badge').className = 'mt-2.5 rounded-full px-3 py-0.5 text-[11px] font-semibold bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100';
+        $('#st-status-msg').textContent = 'Streaming high-speed chunks from Cloudflare CDN...';
+      } else if (data.phase === 'download_done') {
+        $('#st-down-val').textContent = (data.download_mbps || 0).toFixed(1);
+      } else if (data.phase === 'upload') {
+        const cur = data.current_speed || 0;
+        $('#st-current-speed').textContent = cur.toFixed(1);
+        $('#st-up-val').textContent = cur.toFixed(1);
+        $('#st-gauge-circle').style.stroke = '#10b981';
+        $('#st-phase-badge').textContent = 'Measuring Upload Speed...';
+        $('#st-phase-badge').className = 'mt-2.5 rounded-full px-3 py-0.5 text-[11px] font-semibold bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100';
+        $('#st-status-msg').textContent = 'Pushing upload chunks to Cloudflare CDN...';
+      } else if (data.phase === 'complete') {
+        finishTest(data.result);
+      }
+    }
+
+    function finishTest(res) {
+      running = false;
+      $('#st-btn-start').disabled = false;
+      $('#st-btn-start-label').textContent = 'Test Again';
+
+      $('#st-current-speed').textContent = res.download_mbps.toFixed(1);
+      $('#st-down-val').textContent = res.download_mbps.toFixed(1);
+      $('#st-up-val').textContent = res.upload_mbps.toFixed(1);
+      $('#st-ping-val').textContent = res.ping_ms;
+      $('#st-jitter-val').textContent = res.jitter_ms;
+
+      $('#st-gauge-circle').style.strokeDashoffset = 0;
+      $('#st-gauge-circle').style.stroke = '#10b981';
+      $('#st-progress-fill').style.width = '100%';
+
+      $('#st-phase-badge').textContent = 'Test Completed ✓';
+      $('#st-phase-badge').className = 'mt-2.5 rounded-full px-3 py-0.5 text-[11px] font-semibold bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100';
+      $('#st-status-msg').textContent = 'Benchmark completed successfully';
+
+      // Populate Result Card
+      $('#st-res-grade').textContent = `Connection Rating: Grade ${res.grade}`;
+      $('#st-res-rating').textContent = res.rating;
+      $('#st-res-server').textContent = res.server;
+      $('#st-res-wifi').textContent = (AppState.currentWifi && AppState.currentWifi.ssid) ? `${AppState.currentWifi.ssid} (Channel ${AppState.currentWifi.channel})` : 'Active Wi-Fi';
+      $('#st-res-ip').textContent = res.public_ip || 'Public';
+      $('#st-res-time').textContent = res.timestamp;
+
+      $('#st-result-card').classList.remove('hidden');
+    }
+
+    function handleError(msg) {
+      running = false;
+      $('#st-btn-start').disabled = false;
+      $('#st-btn-start-label').textContent = 'Try Again';
+      $('#st-phase-badge').textContent = 'Failed';
+      $('#st-phase-badge').className = 'mt-2.5 rounded-full px-3 py-0.5 text-[11px] font-semibold bg-rose-50 text-rose-700 ring-1 ring-rose-100';
+      $('#st-status-msg').textContent = msg;
+    }
+
+    function init() {
+      $('#btn-open-speedtest').addEventListener('click', openModal);
+      $('#btn-card-speedtest').addEventListener('click', openModal);
+      $('#st-btn-close').addEventListener('click', closeModal);
+      $('#st-btn-cancel').addEventListener('click', closeModal);
+      $('#st-btn-start').addEventListener('click', startTest);
+    }
+
+    return { init, openModal };
+  })();
+
+  /* ------------------------------------------------------------------ *
+   * Application Controller & WebSocket Client
+   * ------------------------------------------------------------------ */
+  const App = (() => {
+    const { $, $$ } = Utils;
+    let ws = null;
+    let fallbackTimer = null;
+    let reconnectTimeout = null;
+
+    function getWsUrl() {
+      if (location.protocol === 'file:') {
+        return 'ws://127.0.0.1:5000/ws/telemetry';
+      }
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${proto}//${location.host}/ws/telemetry`;
+    }
+
+    function getApiBase() {
+      if (location.protocol === 'file:') {
+        return 'http://127.0.0.1:5000';
+      }
+      return '';
+    }
+
+    function connectWebSocket() {
+      if (ws) {
+        try { ws.close(); } catch(e) {}
+      }
+
+      const url = getWsUrl();
+      console.log('Connecting to WebSocket:', url);
+
+      try {
+        ws = new WebSocket(url);
+
+        ws.onopen = () => {
+          console.log('WebSocket connected');
+          UIManager.setWebSocketStatus(true);
+          if (fallbackTimer) clearInterval(fallbackTimer);
+          triggerScan();
+          loadConnections();
+        };
+
+        ws.onmessage = (event) => {
+          if (AppState.paused) return;
+          try {
+            const data = JSON.parse(event.data);
+            if (data.bandwidth) UIManager.updateBandwidthUI(data.bandwidth);
+            if (data.ping_ms !== undefined) UIManager.updatePingCard(data.ping_ms);
+            if (data.routing) UIManager.updateRoutingUI(data.routing);
+            if (data.wifi) UIManager.updateCurrentWifiUI(data.wifi);
+          } catch (err) {
+            console.error('Error parsing WS frame:', err);
+          }
+        };
+
+        ws.onclose = () => {
+          console.warn('WebSocket closed. Attempting reconnect in 3s...');
+          UIManager.setWebSocketStatus(false);
+          startFallbackPolling();
+          clearTimeout(reconnectTimeout);
+          reconnectTimeout = setTimeout(connectWebSocket, 3000);
+        };
+
+        ws.onerror = (err) => {
+          console.error('WebSocket error:', err);
+          ws.close();
+        };
+
+      } catch (e) {
+        console.error('Failed to initialize WebSocket:', e);
+        startFallbackPolling();
+      }
+    }
+
+    function startFallbackPolling() {
+      if (fallbackTimer) return;
+      fallbackTimer = setInterval(async () => {
+        if (AppState.paused) return;
+        try {
+          const res = await fetch(`${getApiBase()}/api/metrics`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.bandwidth) UIManager.updateBandwidthUI(data.bandwidth);
+            if (data.ping_ms !== undefined) UIManager.updatePingCard(data.ping_ms);
+            if (data.routing) UIManager.updateRoutingUI(data.routing);
+            if (data.wifi) UIManager.updateCurrentWifiUI(data.wifi);
+            UIManager.setWebSocketStatus(true);
+          }
+        } catch (e) {
+          UIManager.setWebSocketStatus(false);
+        }
+      }, 1500);
+    }
+
+    async function triggerScan() {
+      const btn = $('#btn-rescan');
+      const spinner = $('#rescan-spinner');
+      btn.disabled = true;
+      spinner.classList.add('animate-spin');
+
+      try {
+        const res = await fetch(`${getApiBase()}/api/wifi/scan`);
+        if (res.ok) {
+          const data = await res.json();
+          UIManager.updateCurrentWifiUI(data.current);
+          UIManager.renderNetworksUI(data.networks, data.current);
+          $('#link-update-time').textContent = 'Last scan: ' + Utils.time();
+        }
+      } catch (err) {
+        console.warn('WiFi scan failed:', err);
+      } finally {
+        btn.disabled = false;
+        spinner.classList.remove('animate-spin');
+      }
+    }
+
+    async function loadConnections() {
+      try {
+        const res = await fetch(`${getApiBase()}/api/connections?limit=120`);
+        if (res.ok) {
+          const data = await res.json();
+          UIManager.renderConnectionsUI(data.connections);
+        }
+      } catch (err) {
+        console.warn('Failed to load connections:', err);
+      }
+    }
+
+    function bindEvents() {
+      // Pause button
+      $('#btn-pause').addEventListener('click', () => {
+        AppState.paused = !AppState.paused;
+        $('#btn-pause-label').textContent = AppState.paused ? 'Resume' : 'Pause';
+        $('#ico-pause').classList.toggle('hidden', AppState.paused);
+        $('#ico-play').classList.toggle('hidden', !AppState.paused);
+        $('#btn-pause').setAttribute('aria-pressed', String(AppState.paused));
+      });
+
+      // Window time range (30s, 60s, 2m)
+      $$('[data-window]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          $$('[data-window]').forEach((x) => x.setAttribute('aria-pressed', String(x === btn)));
+          AppState.windowSize = +btn.dataset.window;
+          BandwidthChart.update(AppState.bwHistory, AppState.windowSize);
+        });
+      });
+
+      // WiFi Band Toggle (2.4 GHz vs 5 GHz)
+      $$('[data-band]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          $$('[data-band]').forEach((x) => x.setAttribute('aria-pressed', String(x === btn)));
+          AppState.currentBand = btn.dataset.band;
+          UIManager.renderNetworksUI(AppState.networks, AppState.currentWifi);
+        });
+      });
+
+      // Scan Now Button
+      $('#btn-rescan').addEventListener('click', triggerScan);
+
+      // Copy IP button
+      $('#btn-copy-ip').addEventListener('click', async (e) => {
+        const ip = $('#card-ip [data-value]').textContent;
+        try {
+          await navigator.clipboard.writeText(ip);
+          e.target.textContent = 'Copied ✓';
+        } catch {
+          e.target.textContent = 'Done';
+        }
+        setTimeout(() => { e.target.textContent = 'Copy'; }, 1500);
+      });
+
+      // Connection Table Filtering & Sorting
+      const ts = UIManager.tableState;
+      $('#conn-search').addEventListener('input', (e) => {
+        ts.q = e.target.value;
+        UIManager.renderConnectionsUI(AppState.connections);
+      });
+
+      $('#conn-status').addEventListener('change', (e) => {
+        ts.status = e.target.value;
+        UIManager.renderConnectionsUI(AppState.connections);
+      });
+
+      $$('th[data-sort]').forEach((th) => {
+        th.addEventListener('click', () => {
+          const k = th.dataset.sort;
+          ts.dir = ts.sort === k ? -ts.dir : 1;
+          ts.sort = k;
+          UIManager.renderConnectionsUI(AppState.connections);
+        });
+      });
+    }
+
+    function init() {
+      BandwidthChart.init($('#chart-bandwidth'));
+      ChannelChart.init($('#chart-channel'));
+      bindEvents();
+      SpeedTestManager.init();
+      setInterval(UIManager.clock, 1000);
+      UIManager.clock();
+
+      // Periodic scans and connection refreshes
+      setInterval(() => {
+        if (!AppState.paused) {
+          triggerScan();
+          loadConnections();
+        }
+      }, 5000);
+
+      connectWebSocket();
+    }
+
+    return { init };
+  })();
+
+  document.addEventListener('DOMContentLoaded', App.init);
+  </script>
+<script src="heatmap.js"></script>
+</body>
+</html>
