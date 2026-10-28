@@ -6,12 +6,10 @@
   <title>Netscope — Real-Time Network & WiFi Analyzer</title>
   <meta name="description" content="Netscope is a real-time network and WiFi analyzer dashboard powered by Python psutil and OS WiFi scanning." />
 
-  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 
-  <!-- Tailwind (CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -29,9 +27,9 @@
         },
       },
     };
-  </script>
+  
+</script>
 
-  <!-- Chart.js (CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <style>
@@ -60,7 +58,8 @@
     ::-webkit-scrollbar-thumb { background: #e4e4e7; border-radius: 8px; }
     :focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; }
 
-    /* Circular Speedtest Gauge */
+    #conn-wrap thead th { position: sticky; top: 0; z-index: 2; background: #f8f8f9; box-shadow: inset 0 -1px 0 #e4e4e7; }
+    
     .st-gauge-bg { stroke: #f4f4f5; }
     .st-gauge-fill {
       transition: stroke-dashoffset 0.25s ease-out, stroke 0.3s ease;
@@ -71,7 +70,7 @@
 </head>
 
 <body class="font-sans text-zinc-800 min-h-screen">
-  <!-- ============ HEADER ============ -->
+  
   <header class="sticky top-0 z-30 border-b border-zinc-200/70 bg-white/75 backdrop-blur-md">
     <div class="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
       <div class="flex items-center gap-3">
@@ -87,7 +86,6 @@
         </div>
       </div>
 
-      <!-- Live Interface & SSID Badges -->
       <div class="hidden md:flex items-center gap-2 text-xs text-zinc-500">
         <span class="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 font-medium text-zinc-700">
           <svg class="h-3.5 w-3.5 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="7" width="20" height="10" rx="2"/><path d="M6 11h.01M10 11h.01"/></svg>
@@ -99,7 +97,6 @@
         </span>
       </div>
 
-      <!-- Speed Test Trigger & Controls -->
       <div class="flex items-center gap-2 sm:gap-3">
         <button id="btn-open-speedtest" type="button" class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 active:scale-[.98] transition">
           <svg class="h-3.5 w-3.5 text-amber-300" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
@@ -129,12 +126,10 @@
 
   <main id="view-dashboard" class="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
-    <!-- ============ METRICS CARDS (5) ============ -->
     <section aria-labelledby="metrics-title">
       <h2 id="metrics-title" class="sr-only">Key metrics</h2>
       <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-4">
         
-        <!-- Ping (ms) -->
         <article class="card card-hover p-5 fade-up" id="card-ping">
           <div class="flex items-center justify-between">
             <span class="text-xs font-medium uppercase tracking-wider text-zinc-500">Ping (ICMP)</span>
@@ -148,7 +143,6 @@
           <p class="mt-1 text-[11px] text-zinc-400">to 1.1.1.1 · avg <span data-sub class="tabular text-zinc-500">--</span> ms</p>
         </article>
 
-        <!-- Bandwidth Live (Mbps) -->
         <article class="card card-hover p-5 fade-up" style="animation-delay:.05s" id="card-bw">
           <div class="flex items-center justify-between">
             <span class="text-xs font-medium uppercase tracking-wider text-zinc-500">Real I/O Rate</span>
@@ -169,7 +163,6 @@
           <p class="mt-1 text-[11px] text-zinc-400">session: <span id="stat-total" class="tabular text-zinc-600">0 MB</span></p>
         </article>
 
-        <!-- Local IP & Routing -->
         <article class="card card-hover p-5 fade-up" style="animation-delay:.1s" id="card-ip">
           <div class="flex items-center justify-between">
             <span class="text-xs font-medium uppercase tracking-wider text-zinc-500">Local IP</span>
@@ -185,7 +178,6 @@
           </dl>
         </article>
 
-        <!-- Active Interface & Hardware -->
         <article class="card card-hover p-5 fade-up" style="animation-delay:.15s" id="card-nic">
           <div class="flex items-center justify-between">
             <span class="text-xs font-medium uppercase tracking-wider text-zinc-500">Active NIC</span>
@@ -201,7 +193,6 @@
           </dl>
         </article>
 
-        <!-- Connected WiFi Link -->
         <article class="card card-hover p-5 fade-up col-span-2 sm:col-span-1" style="animation-delay:.2s" id="card-wifi-quick">
           <div class="flex items-center justify-between">
             <span class="text-xs font-medium uppercase tracking-wider text-zinc-500">WiFi Link</span>
@@ -225,10 +216,8 @@
       </div>
     </section>
 
-    <!-- ============ BANDWIDTH MONITOR + CURRENT LINK ============ -->
     <section class="grid grid-cols-1 xl:grid-cols-3 gap-6">
       
-      <!-- Bandwidth Monitor (Live WebSocket Chart) -->
       <article class="card p-6 xl:col-span-2 fade-up" aria-labelledby="bw-title">
         <header class="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -280,7 +269,6 @@
         </div>
       </article>
 
-      <!-- Current WiFi Link Details (from netsh wlan show interfaces) -->
       <aside class="card p-6 fade-up flex flex-col justify-between" aria-labelledby="link-title">
         <div>
           <header class="flex items-start justify-between">
@@ -303,7 +291,6 @@
               </div>
             </div>
             
-            <!-- Signal bar -->
             <div class="relative mt-4 h-2 rounded-full bg-gradient-to-r from-rose-300 via-amber-300 to-emerald-400">
               <div id="link-marker" class="marker absolute -top-1 h-4 w-4 -ml-2 rounded-full border-[3px] border-white bg-zinc-900 shadow" style="left:50%"></div>
             </div>
@@ -313,7 +300,7 @@
           </div>
 
           <dl id="link-details" class="mt-6 divide-y divide-zinc-100 text-sm">
-            <!-- Dynamically populated -->
+            
           </dl>
         </div>
 
@@ -324,10 +311,8 @@
       </aside>
     </section>
 
-    <!-- ============ WIFI CHANNEL ANALYZER + NEARBY NETWORKS ============ -->
     <section class="grid grid-cols-1 xl:grid-cols-3 gap-6">
       
-      <!-- WiFi Channel Graph -->
       <article class="card p-6 xl:col-span-2 fade-up" aria-labelledby="ch-title">
         <header class="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -350,7 +335,6 @@
           </div>
         </header>
 
-        <!-- Insights Pill Bar -->
         <div class="mt-4 flex flex-wrap gap-2 text-[11px]">
           <span class="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-zinc-600">
             Networks in Band: <b id="ch-count" class="font-semibold text-zinc-900 tabular">0</b>
@@ -369,7 +353,6 @@
         </div>
       </article>
 
-      <!-- Nearby Networks List -->
       <aside class="card p-6 fade-up flex flex-col" aria-labelledby="nets-title">
         <header class="flex items-center justify-between">
           <h2 id="nets-title" class="text-base font-semibold text-zinc-900">Nearby Networks</h2>
@@ -377,12 +360,11 @@
         </header>
         <p class="text-xs text-zinc-500 mt-0.5">Discovered via OS WiFi survey</p>
         <ul id="net-list" class="mt-4 -mx-2 space-y-0.5 overflow-y-auto max-h-[360px] flex-1">
-          <!-- Populated dynamically -->
+          
         </ul>
       </aside>
     </section>
 
-    <!-- ============ ACTIVE CONNECTIONS TABLE (psutil.net_connections) ============ -->
     <section class="card p-6 fade-up" aria-labelledby="conn-title">
       <header class="flex flex-wrap items-center justify-between gap-4">
         <div>
@@ -412,12 +394,13 @@
               <option>Close Wait</option>
               <option>Active</option>
               <option>Syn Sent</option>
+              <option>Closed</option>
             </select>
           </label>
         </div>
       </header>
 
-      <div class="mt-5 -mx-6 overflow-x-auto">
+      <div id="conn-wrap" class="mt-5 -mx-6 overflow-auto max-h-[480px]">
         <table class="min-w-full text-sm">
           <thead>
             <tr class="border-y border-zinc-100 bg-zinc-50/70 text-left text-[11px] font-medium uppercase tracking-wider text-zinc-500">
@@ -430,7 +413,7 @@
             </tr>
           </thead>
           <tbody id="conn-body" class="divide-y divide-zinc-100">
-            <!-- Dynamically populated via psutil.net_connections() -->
+            
           </tbody>
         </table>
         <p id="conn-empty" class="hidden px-6 py-10 text-center text-sm text-zinc-400">No active sockets match your filter.</p>
@@ -439,19 +422,15 @@
 
   </main>
 
-  <!-- ============ HEATMAP PLANNER (content built by heatmap.js) ============ -->
   <section id="view-heatmap" class="hidden mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-6" aria-labelledby="hm-title"></section>
 
-  <!-- ============ SPEED TEST MODAL (Fast.com / Speedtest.net Style) ============ -->
   <div id="st-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-md hidden transition-opacity duration-300" role="dialog" aria-modal="true">
     <div class="card p-8 max-w-xl w-full shadow-modal relative border border-zinc-200/90 bg-white fade-up">
       
-      <!-- Close Button -->
       <button id="st-btn-close" type="button" class="absolute top-5 right-5 text-zinc-400 hover:text-zinc-700 p-1.5 rounded-lg hover:bg-zinc-100 transition" title="Close modal">
         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
       </button>
 
-      <!-- Modal Header -->
       <div class="text-center">
         <div class="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-100 mb-2">
           <svg class="h-3.5 w-3.5 text-amber-500" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
@@ -461,16 +440,14 @@
         <p id="st-server-info" class="text-xs text-zinc-500 mt-0.5">Benchmarking download & upload bandwidth via Global Anycast Edge</p>
       </div>
 
-      <!-- Main Circular Gauge -->
       <div class="relative mt-8 flex flex-col items-center justify-center">
         <svg class="w-60 h-60" viewBox="0 0 200 200">
-          <!-- Background track -->
+          
           <circle cx="100" cy="100" r="85" fill="none" stroke-width="10" class="st-gauge-bg" stroke-dasharray="534" stroke-dashoffset="0" stroke-linecap="round" />
-          <!-- Animated Progress Fill -->
+          
           <circle id="st-gauge-circle" cx="100" cy="100" r="85" fill="none" stroke-width="11" stroke="#6366f1" class="st-gauge-fill" stroke-dasharray="534" stroke-dashoffset="534" stroke-linecap="round" />
         </svg>
 
-        <!-- Center Readout -->
         <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
           <span id="st-current-speed" class="text-5xl font-extrabold tracking-tight text-zinc-900 tabular">0.0</span>
           <span id="st-unit" class="text-xs font-bold text-zinc-400 tracking-widest uppercase mt-0.5">Mbps</span>
@@ -478,7 +455,6 @@
         </div>
       </div>
 
-      <!-- Real-Time Metrics Strip (Download / Upload / Ping) -->
       <div class="mt-6 grid grid-cols-3 gap-3">
         <div class="rounded-xl border border-zinc-100 bg-zinc-50/70 p-3 text-center">
           <div class="flex items-center justify-center gap-1 text-[11px] font-medium text-zinc-500">
@@ -510,7 +486,6 @@
         </div>
       </div>
 
-      <!-- Progress Bar -->
       <div class="mt-5">
         <div class="h-1.5 w-full bg-zinc-100 rounded-full overflow-hidden">
           <div id="st-progress-fill" class="h-full bg-gradient-to-r from-indigo-500 to-emerald-400 transition-all duration-300" style="width: 0%"></div>
@@ -518,7 +493,6 @@
         <p id="st-status-msg" class="text-[11px] text-zinc-500 text-center mt-2">Click 'Start Speed Test' to benchmark real throughput</p>
       </div>
 
-      <!-- Completed Result Information Card (Shown when finished) -->
       <div id="st-result-card" class="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 hidden">
         <div class="flex items-center justify-between pb-3 border-b border-indigo-100/70">
           <div>
@@ -536,7 +510,6 @@
         </dl>
       </div>
 
-      <!-- Action Buttons -->
       <div class="mt-6 flex items-center justify-end gap-3">
         <button id="st-btn-cancel" type="button" class="rounded-lg border border-zinc-200 bg-white px-4 py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-50 transition">Close</button>
         <button id="st-btn-start" type="button" class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 active:scale-[.98] transition">
@@ -548,21 +521,14 @@
     </div>
   </div>
 
-  <!-- ============ FOOTER ============ -->
   <footer class="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 pb-10 pt-2 text-[11px] text-zinc-400 flex flex-wrap justify-between gap-2">
     <span>Netscope Full-Stack Network Analyzer · Python psutil & OS netsh</span>
     <span>Telemetry refresh: 1s WebSocket stream · WiFi scan: on-demand & periodic</span>
   </footer>
 
-  <!-- ===================================================================
-       JAVASCRIPT APPLICATION
-       =================================================================== -->
   <script>
   'use strict';
 
-  /* ------------------------------------------------------------------ *
-   * Core Utilities
-   * ------------------------------------------------------------------ */
   const Utils = {
     $: (s, r = document) => r.querySelector(s),
     $$: (s, r = document) => [...r.querySelectorAll(s)],
@@ -599,9 +565,6 @@
     }
   };
 
-  /* ------------------------------------------------------------------ *
-   * Application State & Color Palette
-   * ------------------------------------------------------------------ */
   const AppState = {
     historyLength: 120,
     windowSize: 60,
@@ -609,11 +572,9 @@
     currentBand: '2.4',
     selectedHighlightId: null,
     
-    // Telemetry storage
     bwHistory: { t: [], down: [], up: [] },
     pingHistory: [],
     
-    // Active cached models
     currentWifi: null,
     networks: [],
     connections: [],
@@ -623,9 +584,6 @@
     channels5: [36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144, 149, 153, 157, 161, 165]
   };
 
-  /* ------------------------------------------------------------------ *
-   * Chart 1: Bandwidth Monitor (Chart.js)
-   * ------------------------------------------------------------------ */
   const BandwidthChart = (() => {
     let chart;
     const gradient = (color) => (ctx) => {
@@ -680,9 +638,6 @@
     return { init, update };
   })();
 
-  /* ------------------------------------------------------------------ *
-   * Chart 2: WiFi Channel Analyzer (Spectral Curves & Overlap)
-   * ------------------------------------------------------------------ */
   const ChannelChart = (() => {
     let chart;
     const FLOOR = -100, STEPS = 25, PEAK = 12;
@@ -808,9 +763,6 @@
     return { init, render };
   })();
 
-  /* ------------------------------------------------------------------ *
-   * UI Manager — DOM Updates & Renderers
-   * ------------------------------------------------------------------ */
   const UIManager = (() => {
     const { $, $$, esc, quality } = Utils;
 
@@ -1016,8 +968,48 @@
       ChannelChart.render(networks, currentWifi, band, AppState.selectedHighlightId);
     }
 
-    // Connections Table Manager
     const tableState = { sort: 'status', dir: 1, q: '', status: '' };
+
+    const STATUS_RANK = { 'Established': 0, 'Active': 1, 'Listen': 2, 'Listening': 2, 'Syn Sent': 3, 'Time Wait': 4, 'Close Wait': 5 };
+    const ROW_BG = {
+      'Established': 'bg-emerald-50',
+      'Listen': 'bg-sky-50',
+      'Listening': 'bg-sky-50',
+      'Time Wait': 'bg-zinc-100',
+      'Closed': 'bg-rose-50',
+    };
+
+    const CLOSED_TTL = 10000;
+    const connSeen = new Map();   
+    const connClosed = new Map(); 
+    const connKey = (c) => `${c.proto}|${c.local_ip}:${c.local_port}|${c.target_ip}:${c.target_port}|${c.pid}`;
+    const rowKey = (c) => `${c.process}|${c.local_port}|${c.target_ip}|${c.target_port}|${c.proto}`;
+
+    function purgeClosed() {
+      const now = Date.now();
+      let changed = false;
+      for (const [k, v] of connClosed) {
+        if (now - v.at >= CLOSED_TTL) { connClosed.delete(k); changed = true; }
+      }
+      return changed;
+    }
+
+    function mergeClosed(live) {
+      const now = Date.now();
+      const cur = new Map(live.map((c) => [connKey(c), c]));
+      for (const [k, c] of connSeen) {
+        if (!cur.has(k) && !connClosed.has(k)) {
+          connClosed.set(k, { c: { ...c, status: 'Closed', _rank: STATUS_RANK[c.status] ?? 9 }, at: now });
+        }
+      }
+      for (const k of cur.keys()) connClosed.delete(k);
+      connSeen.clear();
+      cur.forEach((c, k) => connSeen.set(k, c));
+      purgeClosed();
+      return live.concat(Array.from(connClosed.values(), (v) => v.c));
+    }
+
+    setInterval(() => { if (purgeClosed()) renderConnectionsUI(AppState.connections); }, 1000);
     const STATUS_MAP = {
       'Established': 'bg-emerald-50 text-emerald-700 ring-emerald-100',
       'Active': 'bg-sky-50 text-sky-700 ring-sky-100',
@@ -1026,10 +1018,12 @@
       'Time Wait': 'bg-zinc-100 text-zinc-600 ring-zinc-200',
       'Close Wait': 'bg-orange-50 text-orange-700 ring-orange-100',
       'Syn Sent': 'bg-violet-50 text-violet-700 ring-violet-100',
+      'Closed': 'bg-rose-100 text-rose-700 ring-rose-200',
     };
 
-    function renderConnectionsUI(conns) {
-      AppState.connections = conns;
+    function renderConnectionsUI(live) {
+      const conns = mergeClosed(live);
+      AppState.connections = live;
       const { q, status, sort, dir } = tableState;
       const needle = q.trim().toLowerCase();
 
@@ -1042,21 +1036,24 @@
         process: (c) => c.process,
         local_port: (c) => c.local_port,
         proto: (c) => c.proto,
-        status: (c) => c.status,
+        status: (c) => (c.status === 'Closed' ? c._rank : (STATUS_RANK[c.status] ?? 9)),
         pid: (c) => c.pid,
       }[sort] || ((c) => c.status);
 
       rows = rows.slice().sort((a, b) => {
         const x = key(a), y = key(b);
-        return (x > y ? 1 : x < y ? -1 : 0) * dir;
+        const r = (x > y ? 1 : x < y ? -1 : 0) * dir;
+        if (r) return r;
+        const ka = rowKey(a), kb = rowKey(b);
+        return ka > kb ? 1 : ka < kb ? -1 : 0;
       });
 
-      $('#conn-total').textContent = conns.length;
+      $('#conn-total').textContent = live.length;
       $('#conn-est').textContent = conns.filter((c) => c.status === 'Established').length;
       $('#conn-empty').classList.toggle('hidden', rows.length > 0);
 
       $('#conn-body').innerHTML = rows.map((c) => `
-        <tr class="hover:bg-zinc-50/80 transition-colors">
+        <tr class="${ROW_BG[c.status] || ''} hover:brightness-95 transition-colors">
           <td class="px-6 py-3 whitespace-nowrap">
             <div class="font-mono text-[13px] text-zinc-900">${c.target_ip}${c.target_port ? `<span class="text-zinc-400">:${c.target_port}</span>` : ''}</div>
           </td>
@@ -1071,7 +1068,7 @@
           </td>
           <td class="px-4 py-3 whitespace-nowrap">
             <span class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ${STATUS_MAP[c.status] || 'bg-zinc-100 text-zinc-600 ring-zinc-200'}">
-              <span class="h-1.5 w-1.5 rounded-full ${c.status === 'Established' ? 'bg-emerald-500' : 'bg-zinc-400'}"></span>
+              <span class="h-1.5 w-1.5 rounded-full ${c.status === 'Established' ? 'bg-emerald-500' : c.status === 'Closed' ? 'bg-rose-500' : 'bg-zinc-400'}"></span>
               ${c.status}
             </span>
           </td>
@@ -1113,15 +1110,12 @@
     };
   })();
 
-  /* ------------------------------------------------------------------ *
-   * Speed Test Manager (Fast.com / Speedtest.net Experience)
-   * ------------------------------------------------------------------ */
   const SpeedTestManager = (() => {
     const { $, esc } = Utils;
     let ws = null;
     let running = false;
     let abortCtl = null;
-    const CIRCLE_CIRCUMFERENCE = 534; // 2 * PI * 85
+    const CIRCLE_CIRCUMFERENCE = 534; 
 
     function getSpeedtestWsUrl() {
       if (location.protocol === 'file:') {
@@ -1167,7 +1161,6 @@
       running = false;
     }
 
-    /* ---- Browser-side speed test (Cloudflare edge, CORS-enabled) ---- */
     const CF = 'https://speed.cloudflare.com';
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -1181,7 +1174,7 @@
         await sleep(60);
       }
       if (!samples.length) throw new Error('no latency samples');
-      const used = samples.length > 2 ? samples.slice(1) : samples; // drop TLS warm-up sample
+      const used = samples.length > 2 ? samples.slice(1) : samples; 
       const ping = used.reduce((a, b) => a + b, 0) / used.length;
       let jit = 0;
       for (let i = 1; i < used.length; i++) jit += Math.abs(used[i] - used[i - 1]);
@@ -1308,7 +1301,6 @@
       }
     }
 
-    /* Legacy server-side test (Flask /ws/speedtest), kept as an alternative */
     function startTestServer() {
       if (running) return;
       running = true;
@@ -1358,7 +1350,6 @@
       const progress = data.progress || 0;
       $('#st-progress-fill').style.width = `${progress}%`;
 
-      // Update Gauge progress offset
       const offset = CIRCLE_CIRCUMFERENCE - (progress / 100) * CIRCLE_CIRCUMFERENCE;
       $('#st-gauge-circle').style.strokeDashoffset = offset;
 
@@ -1411,7 +1402,6 @@
       $('#st-phase-badge').className = 'mt-2.5 rounded-full px-3 py-0.5 text-[11px] font-semibold bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100';
       $('#st-status-msg').textContent = 'Benchmark completed successfully';
 
-      // Populate Result Card
       $('#st-res-grade').textContent = `Connection Rating: Grade ${res.grade}`;
       $('#st-res-rating').textContent = res.rating;
       $('#st-res-server').textContent = res.server;
@@ -1442,9 +1432,6 @@
     return { init, openModal };
   })();
 
-  /* ------------------------------------------------------------------ *
-   * Application Controller & WebSocket Client
-   * ------------------------------------------------------------------ */
   const App = (() => {
     const { $, $$ } = Utils;
     let ws = null;
@@ -1561,7 +1548,7 @@
 
     async function loadConnections() {
       try {
-        const res = await fetch(`${getApiBase()}/api/connections?limit=120`);
+        const res = await fetch(`${getApiBase()}/api/connections?limit=500`);
         if (res.ok) {
           const data = await res.json();
           UIManager.renderConnectionsUI(data.connections);
@@ -1572,7 +1559,7 @@
     }
 
     function bindEvents() {
-      // Pause button
+      
       $('#btn-pause').addEventListener('click', () => {
         AppState.paused = !AppState.paused;
         $('#btn-pause-label').textContent = AppState.paused ? 'Resume' : 'Pause';
@@ -1581,7 +1568,6 @@
         $('#btn-pause').setAttribute('aria-pressed', String(AppState.paused));
       });
 
-      // Window time range (30s, 60s, 2m)
       $$('[data-window]').forEach((btn) => {
         btn.addEventListener('click', () => {
           $$('[data-window]').forEach((x) => x.setAttribute('aria-pressed', String(x === btn)));
@@ -1590,7 +1576,6 @@
         });
       });
 
-      // WiFi Band Toggle (2.4 GHz vs 5 GHz)
       $$('[data-band]').forEach((btn) => {
         btn.addEventListener('click', () => {
           $$('[data-band]').forEach((x) => x.setAttribute('aria-pressed', String(x === btn)));
@@ -1599,10 +1584,8 @@
         });
       });
 
-      // Scan Now Button
       $('#btn-rescan').addEventListener('click', triggerScan);
 
-      // Copy IP button
       $('#btn-copy-ip').addEventListener('click', async (e) => {
         const ip = $('#card-ip [data-value]').textContent;
         try {
@@ -1614,7 +1597,6 @@
         setTimeout(() => { e.target.textContent = 'Copy'; }, 1500);
       });
 
-      // Connection Table Filtering & Sorting
       const ts = UIManager.tableState;
       $('#conn-search').addEventListener('input', (e) => {
         ts.q = e.target.value;
@@ -1644,13 +1626,14 @@
       setInterval(UIManager.clock, 1000);
       UIManager.clock();
 
-      // Periodic scans and connection refreshes
       setInterval(() => {
         if (!AppState.paused) {
           triggerScan();
-          loadConnections();
+          
         }
       }, 5000);
+
+      setInterval(() => { if (!AppState.paused) loadConnections(); }, 2000);
 
       connectWebSocket();
     }
@@ -1659,7 +1642,8 @@
   })();
 
   document.addEventListener('DOMContentLoaded', App.init);
-  </script>
+  
+</script>
 <script src="heatmap.js"></script>
 </body>
 </html>

@@ -1,13 +1,3 @@
-#!/usr/bin/env python3
-"""
-Netscope — Real-Time Network & WiFi Analyzer (NetSpot / WiFi Analyzer Clone)
-Backend: Flask, Flask-Sock (WebSockets), psutil, subprocess (Windows netsh / OS tools), requests
-Features:
-- Real-Time Bandwidth Monitor (psutil I/O rate, 1s WebSocket stream)
-- WiFi Channel Analyzer (netsh wlan show networks mode=bssid, 2.4/5GHz spectral curves)
-- Active System Connections (psutil.net_connections)
-- Live Speed Test Engine (Download, Upload, Ping, Jitter via Cloudflare Edge)
-"""
 
 import os
 import sys
@@ -26,9 +16,6 @@ import requests
 app = Flask(__name__, static_folder=".", static_url_path="")
 sock = Sock(app)
 
-# -----------------------------------------------------------------------------
-# Public IP Background Fetcher
-# -----------------------------------------------------------------------------
 class PublicIPManager:
     def __init__(self, refresh_interval: int = 15):
         self.public_ip = "Fetching..."
@@ -65,19 +52,9 @@ class PublicIPManager:
 
 ip_manager = PublicIPManager()
 
-# -----------------------------------------------------------------------------
-# Speed Test Engine (Similar to Fast.com / Speedtest.net)
-# -----------------------------------------------------------------------------
 class SpeedTestEngine:
     @staticmethod
     def run(progress_callback: Callable[[Dict[str, Any]], None]) -> Dict[str, Any]:
-        """
-        Executes a real 3-phase internet speed test:
-        1. Ping & Jitter
-        2. Download Throughput (Mbps)
-        3. Upload Throughput (Mbps)
-        Streams real-time progress callbacks to the caller.
-        """
         session = requests.Session()
         session.headers.update({
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -94,7 +71,6 @@ class SpeedTestEngine:
             "upload_mbps": 0
         })
 
-        # --- Phase 1: Ping & Jitter ---
         pings = []
         for i in range(5):
             t0 = time.time()
@@ -120,8 +96,7 @@ class SpeedTestEngine:
             "upload_mbps": 0
         })
 
-        # --- Phase 2: Download Speed (Chunked Streaming) ---
-        download_url = "https://speed.cloudflare.com/__down?bytes=25000000"  # 25 MB stream
+        download_url = "https://speed.cloudflare.com/__down?bytes=25000000"
         t_start = time.time()
         total_downloaded = 0
         last_update = time.time()
@@ -130,7 +105,7 @@ class SpeedTestEngine:
         try:
             with session.get(download_url, stream=True, timeout=8) as r:
                 r.raise_for_status()
-                for chunk in r.iter_content(chunk_size=131072): # 128 KB chunks
+                for chunk in r.iter_content(chunk_size=131072):
                     if not chunk:
                         break
                     total_downloaded += len(chunk)
@@ -152,7 +127,7 @@ class SpeedTestEngine:
                         })
                         last_update = now
 
-                    if elapsed >= 6.5: # 6.5 seconds max download test
+                    if elapsed >= 6.5:
                         break
         except Exception:
             pass
@@ -173,7 +148,6 @@ class SpeedTestEngine:
             "upload_mbps": 0
         })
 
-        # --- Phase 3: Upload Speed (Chunked POST) ---
         t_up_start = time.time()
         total_uploaded = 0
         last_up_update = time.time()
@@ -184,7 +158,7 @@ class SpeedTestEngine:
             if now - t_up_start >= 6.0:
                 break
             try:
-                chunk_size = 1500000 # 1.5 MB per POST
+                chunk_size = 1500000
                 payload = os.urandom(chunk_size)
                 r = session.post("https://speed.cloudflare.com/__up", data=payload, timeout=4.5)
                 if r.status_code == 200:
@@ -209,7 +183,6 @@ class SpeedTestEngine:
         total_time_up = max(time.time() - t_up_start, 0.1)
         up_mbps = round((total_uploaded * 8) / (total_time_up * 1e6), 2) if total_uploaded else 5.0
 
-        # Quality Rating Assessment
         if down_mbps >= 50 and avg_ping <= 50:
             rating = "Ultra-Fast: 4K UHD Streaming & Competitive Low-Latency Gaming"
             grade = "A+"
@@ -247,9 +220,6 @@ class SpeedTestEngine:
 
         return final_result
 
-# -----------------------------------------------------------------------------
-# OS WiFi Analyzer (Windows netsh / cross-platform fallback)
-# -----------------------------------------------------------------------------
 class WifiAnalyzer:
     @staticmethod
     def get_current_wifi() -> Dict[str, Any]:
@@ -439,9 +409,6 @@ class WifiAnalyzer:
 
         return networks
 
-# -----------------------------------------------------------------------------
-# System Network Monitor (psutil I/O, Connections, Interfaces, Ping)
-# -----------------------------------------------------------------------------
 class SystemNetworkMonitor:
     def __init__(self):
         self.last_io = psutil.net_io_counters()
@@ -609,9 +576,6 @@ class SystemNetworkMonitor:
 
 monitor = SystemNetworkMonitor()
 
-# -----------------------------------------------------------------------------
-# REST API Endpoints
-# -----------------------------------------------------------------------------
 @app.route("/")
 def index():
     return send_from_directory(".", "index.html")
@@ -678,18 +642,11 @@ def api_metrics():
 
 @app.route("/api/speedtest/run")
 def api_speedtest_run():
-    # Synchronous speedtest execution
     result = SpeedTestEngine.run(lambda p: None)
     return jsonify(result)
 
-# -----------------------------------------------------------------------------
-# WebSocket Streams
-# -----------------------------------------------------------------------------
 @sock.route("/ws/telemetry")
 def websocket_telemetry(ws):
-    """
-    Continuous real-time telemetry stream (1 Hz) to connected client.
-    """
     scan_counter = 0
     cached_wifi = WifiAnalyzer.get_current_wifi()
 
@@ -725,10 +682,6 @@ def websocket_telemetry(ws):
 
 @sock.route("/ws/speedtest")
 def websocket_speedtest(ws):
-    """
-    Live streaming WebSocket for Speed Test (Download, Upload, Ping, Jitter).
-    Sends high-frequency chunk updates to animate the speed needle.
-    """
     while True:
         try:
             raw = ws.receive()
@@ -750,9 +703,6 @@ def websocket_speedtest(ws):
                 pass
             break
 
-# -----------------------------------------------------------------------------
-# Main Entry Point
-# -----------------------------------------------------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     print("=" * 65)

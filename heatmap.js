@@ -1,26 +1,13 @@
-/* ==========================================================================
- * Netscope — Wi-Fi Heatmap Planner
- * --------------------------------------------------------------------------
- * Interactive floor-plan simulator:
- *   - draw walls / glass / doors made of different materials
- *   - place access points (routers) and client devices (laptop / PC)
- *   - heatmap = best RSSI from any AP, using a log-distance path-loss model
- *     plus a fixed attenuation (dB) for every wall the straight line crosses
- *   - coverage contour per AP shows how walls shrink the ideal radius
- * Everything runs in the browser (canvas); the plan is saved in localStorage.
- * ========================================================================== */
+
 (() => {
   'use strict';
 
-  /* ------------------------------------------------------------------ *
-   * Constants & models
-   * ------------------------------------------------------------------ */
-  const PX = 30;                 // canvas pixels per metre
-  const W = 1200, H = 720;       // canvas size  -> 40 m x 24 m
-  const CELL = 8;                // heatmap cell size (px)
+  const PX = 30;                 
+  const W = 1200, H = 720;       
+  const CELL = 8;                
   const COLS = W / CELL, ROWS = H / CELL;
-  const NOISE = -95;             // noise floor (dBm)
-  const PL0 = { 2.4: 40, 5: 47 };// path loss at 1 m (dB) per band
+  const NOISE = -95;             
+  const PL0 = { 2.4: 40, 5: 47 };
   const STORE = 'netscope.heatmap.v1';
 
   const MATERIALS = {
@@ -33,7 +20,7 @@
     mdoor:    { name: 'Metal door',          l24: 15, l5: 22, color: '#475569', w: 6, door: true },
   };
   const AP_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#0ea5e9', '#8b5cf6'];
-  // [minimum RSSI, PHY rate Mbps] (approximate 2x2 client, 80 MHz on 5 GHz / 20 MHz on 2.4 GHz)
+  
   const RATES = {
     5:   [[-50, 866], [-58, 650], [-63, 433], [-67, 325], [-72, 195], [-77, 117], [-82, 58], [-88, 13]],
     2.4: [[-50, 144], [-58, 130], [-63, 117], [-67, 86],  [-72, 58],  [-77, 29],  [-82, 13], [-88, 6.5]],
@@ -51,9 +38,6 @@
     { id: 'erase',  label: 'Eraser', key: 'E', hint: 'Click a wall, door, access point or device to delete it.' },
   ];
 
-  /* ------------------------------------------------------------------ *
-   * State
-   * ------------------------------------------------------------------ */
   const state = {
     walls: [], aps: [], devices: [],
     tool: 'select', mat: 'drywall', sel: null,
@@ -87,14 +71,11 @@
     return `${prefix}-${n}`;
   };
 
-  /* ------------------------------------------------------------------ *
-   * Persistence
-   * ------------------------------------------------------------------ */
   function save() {
     try {
       const { walls, aps, devices, n, thr, source, show, seq } = state;
       localStorage.setItem(STORE, JSON.stringify({ walls, aps, devices, n, thr, source, show, seq }));
-    } catch (e) { /* storage unavailable */ }
+    } catch (e) {  }
   }
   function load() {
     try {
@@ -107,14 +88,10 @@
         Object.assign(state.show, d.show || {});
         return true;
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {  }
     return false;
   }
 
-  /* ------------------------------------------------------------------ *
-   * Geometry & RF model
-   * ------------------------------------------------------------------ */
-  // Intersection of segment P->P+D (t in (0,1]) with wall w. Returns t or -1.
   function hitT(px, py, dx, dy, w) {
     const ex = w.b.x - w.a.x, ey = w.b.y - w.a.y;
     const den = dx * ey - dy * ex;
@@ -127,7 +104,6 @@
 
   const baseLoss = (ap, d) => ap.power - PL0[ap.band] - 10 * state.n * Math.log10(Math.max(d, 1));
 
-  // RSSI of `ap` at point (x,y) in metres. Optionally collects crossed walls.
   function rssi(ap, x, y, hits) {
     const dx = x - ap.x, dy = y - ap.y;
     const d = Math.hypot(dx, dy);
@@ -143,10 +119,8 @@
     return baseLoss(ap, d) - loss;
   }
 
-  // Ideal (free of walls) radius where RSSI == threshold
   const idealRadius = (ap) => Math.max(1, Math.pow(10, (ap.power - PL0[ap.band] - state.thr) / (10 * state.n)));
 
-  // Cast rays around the AP: radius where RSSI drops below the threshold, with walls.
   function coverage(ap) {
     const RAYS = 180, MAXD = 80, STEP = 0.1;
     const pts = [];
@@ -206,10 +180,6 @@
     return best;
   }
 
-  /* ------------------------------------------------------------------ *
-   * Editing helpers
-   * ------------------------------------------------------------------ */
-  // A door replaces the part of an existing collinear wall it covers.
   function trimUnder(a, b) {
     const eps = 0.12;
     const out = [];
@@ -303,16 +273,16 @@
   function loadSample() {
     state.walls = []; state.aps = []; state.devices = []; state.seq = 1; state.sel = null;
     const wl = (x1, y1, x2, y2, mat) => addWall({ x: x1, y: y1 }, { x: x2, y: y2 }, mat);
-    // outer shell
+    
     wl(3, 3, 37, 3, 'concrete'); wl(37, 3, 37, 21, 'concrete');
     wl(37, 21, 3, 21, 'concrete'); wl(3, 21, 3, 3, 'concrete');
-    // corridor walls
+    
     wl(3, 11, 37, 11, 'drywall'); wl(3, 13, 37, 13, 'drywall');
-    // room dividers
+    
     [13, 23].forEach((x) => { wl(x, 3, x, 11, 'drywall'); wl(x, 13, x, 21, 'drywall'); });
     wl(23, 3, 23, 11, 'brick'); wl(23, 13, 23, 21, 'brick');
     wl(30, 3, 30, 11, 'glass'); wl(30, 13, 30, 21, 'drywall');
-    // doors (cut openings in the walls above)
+    
     [[7, 8], [17, 18], [26, 27]].forEach(([a, b]) => {
       wl(a, 11, b, 11, 'wdoor'); wl(a, 13, b, 13, 'wdoor');
     });
@@ -326,9 +296,6 @@
     state.devices.push({ id: nid(), x: 18, y: 18, name: 'Laptop-2', kind: 'laptop' });
   }
 
-  /* ------------------------------------------------------------------ *
-   * DOM scaffolding
-   * ------------------------------------------------------------------ */
   const css = `
     .tab-btn{padding:.4rem .95rem;border-radius:.6rem;font-size:.75rem;font-weight:600;color:#71717a;transition:all .2s ease}
     .tab-btn:hover{color:#18181b}
@@ -447,9 +414,6 @@
   cv.style.aspectRatio = `${W} / ${H}`;
   const ctx = cv.getContext('2d');
 
-  /* ------------------------------------------------------------------ *
-   * Heatmap rendering
-   * ------------------------------------------------------------------ */
   const off = document.createElement('canvas');
   off.width = COLS; off.height = ROWS;
   const offCtx = off.getContext('2d');
@@ -499,9 +463,6 @@
     offCtx.putImageData(img, 0, 0);
   }
 
-  /* ------------------------------------------------------------------ *
-   * Canvas drawing
-   * ------------------------------------------------------------------ */
   let geoDirty = true;
   let raf = 0;
   let covCache = new Map();
@@ -639,11 +600,11 @@
       for (const ap of state.aps) {
         const cov = covCache.get(ap.id), c = apColor(ap);
         if (!cov) continue;
-        // ideal radius (free space, no walls)
+        
         ctx.beginPath(); ctx.arc(ap.x * PX, ap.y * PX, cov.R * PX, 0, Math.PI * 2);
         ctx.setLineDash([7, 6]); ctx.strokeStyle = hexA(c, 0.7); ctx.lineWidth = 1.5; ctx.stroke();
         ctx.setLineDash([]);
-        // real coverage, after wall losses
+        
         ctx.beginPath();
         cov.pts.forEach((p, i) => (i ? ctx.lineTo(p.x * PX, p.y * PX) : ctx.moveTo(p.x * PX, p.y * PX)));
         ctx.closePath();
@@ -657,7 +618,6 @@
     }
     ctx.lineCap = 'butt';
 
-    // device -> AP links and the walls crossed on the way
     for (const { d, s } of statuses) {
       if (!s) continue;
       ctx.beginPath(); ctx.moveTo(d.x * PX, d.y * PX); ctx.lineTo(s.ap.x * PX, s.ap.y * PX);
@@ -687,7 +647,6 @@
       pill([`${len.toFixed(2)} m`], (drag.a.x + drag.b.x) / 2 * PX, (drag.a.y + drag.b.y) / 2 * PX + 10, m.color);
     }
 
-    // scale bar
     ctx.strokeStyle = '#3f3f46'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(16, H - 16); ctx.lineTo(16 + 5 * PX, H - 16);
     ctx.moveTo(16, H - 21); ctx.lineTo(16, H - 11); ctx.moveTo(16 + 5 * PX, H - 21); ctx.lineTo(16 + 5 * PX, H - 11);
@@ -699,13 +658,10 @@
     renderPanels();
   }
 
-  /* ------------------------------------------------------------------ *
-   * Side panels
-   * ------------------------------------------------------------------ */
   const setHTML = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
 
   function renderPanels() {
-    // devices
+    
     if (!statuses.length) {
       setHTML($('#hm-devices'), '<p class="text-xs text-zinc-400">Place a laptop or PC on the plan to see its signal status.</p>');
     } else {
@@ -742,7 +698,6 @@
       }).join(''));
     }
 
-    // access points
     if (!state.aps.length) {
       setHTML($('#hm-aps'), '<p class="text-xs text-zinc-400">Place an access point to see its radius and how walls affect it.</p>');
     } else {
@@ -816,9 +771,6 @@
     schedule();
   }
 
-  /* ------------------------------------------------------------------ *
-   * Toolbox
-   * ------------------------------------------------------------------ */
   function renderTools() {
     $('#hm-tools').innerHTML = TOOLS.map((t) =>
       `<button type="button" class="hm-tool" data-tool="${t.id}" aria-pressed="${state.tool === t.id}">
@@ -842,9 +794,6 @@
     schedule();
   }
 
-  /* ------------------------------------------------------------------ *
-   * Pointer & keyboard interaction
-   * ------------------------------------------------------------------ */
   const pos = (e) => {
     const r = cv.getBoundingClientRect();
     return { x: (e.clientX - r.left) * (W / r.width) / PX, y: (e.clientY - r.top) * (H / r.height) / PX };
@@ -939,9 +888,6 @@
     if (t && !e.ctrlKey && !e.metaKey) setTool(t.id);
   });
 
-  /* ------------------------------------------------------------------ *
-   * UI wiring
-   * ------------------------------------------------------------------ */
   section.addEventListener('click', (e) => {
     const tool = e.target.closest('[data-tool]');
     if (tool) { setTool(tool.dataset.tool); return; }
@@ -1000,9 +946,6 @@
     ['heat', 'cover', 'labels', 'grid'].forEach((k) => { $(`#hm-show-${k}`).checked = !!state.show[k]; });
   }
 
-  /* ------------------------------------------------------------------ *
-   * Real Wi-Fi comparison (from the Flask backend)
-   * ------------------------------------------------------------------ */
   async function fetchReal() {
     const el = $('#hm-real');
     const base = location.protocol === 'file:' ? 'http://127.0.0.1:5000' : '';
@@ -1022,22 +965,16 @@
   }
   $('#hm-real-refresh').addEventListener('click', fetchReal);
 
-  /* ------------------------------------------------------------------ *
-   * Tabs
-   * ------------------------------------------------------------------ */
   function showTab(name) {
     const hm = name === 'heatmap';
     $('#view-dashboard').classList.toggle('hidden', hm);
     $('#view-heatmap').classList.toggle('hidden', !hm);
     $$('[data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
-    try { history.replaceState(null, '', hm ? '#heatmap' : '#dashboard'); } catch (e) { /* file:// */ }
+    try { history.replaceState(null, '', hm ? '#heatmap' : '#dashboard'); } catch (e) {  }
     if (hm) { geoDirty = true; schedule(); fetchReal(); }
   }
   $$('[data-tab]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
 
-  /* ------------------------------------------------------------------ *
-   * Init
-   * ------------------------------------------------------------------ */
   function init() {
     if (!load()) loadSample();
     syncControls();
